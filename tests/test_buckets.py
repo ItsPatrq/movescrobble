@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from swimscrobble import taste
 from swimscrobble.affinity import Aff, ArtistAff
 from swimscrobble.buckets import assign, classify, looks_like_song, relevance
 from swimscrobble.library import Track
+from swimscrobble.matcher import norm
 from swimscrobble.taste import Taste
 
 DAY = 86400
@@ -53,15 +53,15 @@ def by_bucket(owned):
 
 
 def test_each_track_is_judged_against_history():
-    t = Taste(loved=[("Loved Band", "Loved Old")], similar=[("New Band", "Similar Song", 0.7)])
+    t = Taste(loved=[("Loved Band", "Loved Old")], artist_score={norm("New Band"): 0.7})
     owned, _ = assign(t, TRACKS, ARTISTS, LIB, now=NOW)
     b = by_bucket(owned)
     assert b["obsession"] == ["Never Played Deep Cut", "Played Lately"]  # the ARTIST is hot: unplayed tracks too
     assert b["mid"] == ["Last Month"]
     assert b["lost"] == ["Forgotten Banger", "Loved Old"]  # silent 90+ days / loved
     assert b["fresh"] == ["Unplayed By Known Artist"]
-    assert b["rec"] == ["Random Unknown", "Similar Song"]
-    assert len(owned) == len(LIB)
+    assert b["rec"] == ["Similar Song"]  # "Random Unknown" is nowhere near your taste graph: left out
+    assert len(owned) == len(LIB) - 1
 
 
 def test_classify_rules():
@@ -81,11 +81,13 @@ def test_relevance_rises_with_track_and_artist_activity():
     assert relevance(None, art(now=30)) > relevance(None, art(now=3)) > 0
 
 
-def test_similarity_boosts_discovery_score_only():
-    t = Taste(similar=[("New Band", "Similar Song", 0.9)])
-    owned, _ = assign(t, TRACKS, ARTISTS, LIB, now=NOW)
-    score = {c.title: c.score for c in owned}
-    assert score["Similar Song"] > score["Random Unknown"] >= 0.35
+def test_discovery_is_scored_by_the_taste_graph_alone():
+    t = Taste(artist_score={norm("New Band"): 0.3}, recs=[("New Band", "Similar Song", 0.9)])
+    score = {c.title: c.score for c in assign(t, TRACKS, ARTISTS, LIB, now=NOW)[0]}
+    assert score["Similar Song"] == 0.9 and "Random Unknown" not in score  # the track's own score beats its artist's
+    fresh = {c.title: c.score for c in assign(Taste(artist_score={norm("Known Band"): 1.0}), TRACKS, ARTISTS, LIB,
+                                                now=NOW)[0]}
+    assert fresh["Unplayed By Known Artist"] > score["Unplayed By Known Artist"]  # the graph lifts fresh tracks too
 
 
 def test_pool_restricts_eligibility_but_history_still_applies():
@@ -95,16 +97,17 @@ def test_pool_restricts_eligibility_but_history_still_applies():
 
 
 def test_played_but_unowned_tracks_become_wishes_discoveries_too():
-    t = Taste(similar=[("Far Band", "Rec Not Owned", 0.9), ("Hot Band", "Played Lately", 0.5)],
-              artist_tracks={"Hot Band": [("Hot Band", "Famous Not Owned")]},
-              genre_tracks=[("Far Band", "Genre Not Owned")])
+    t = Taste(artist_score={"x": 1.0}, recs=[
+        ("Far Band", "Rec Not Owned", 0.9), ("Hot Band", "Played Lately", 0.5), ("Known Band", "Deep Not Owned", 0.6),
+        ("Far Band", "Weak Not Owned", 0.1)])
     _, wanted = assign(t, TRACKS, ARTISTS, LIB, now=NOW)
     got = {c.title: next(iter(c.sources)) for c in wanted}
     assert got["Played A Lot"] in ("obsession", "mid")  # 20 recent plays, no local file: top priority
     assert got["Another Old Hit"] == "obsession"  # old, but its artist is hot now
-    assert got["Rec Not Owned"] == "rec" and got["Genre Not Owned"] == "rec" and got["Famous Not Owned"] == "fresh"
+    assert got["Rec Not Owned"] == "rec" and got["Deep Not Owned"] == "fresh"  # bucket from your history
+    assert "Weak Not Owned" not in got  # a discovery below REC_MIN is not worth downloading
     assert "Played Lately" not in got  # owned and already played: not a wish
-    assert wanted[0].title in ("Played A Lot", "Another Old Hit")
+    assert [c.score for c in wanted] == sorted((c.score for c in wanted), reverse=True)
 
 
 def test_no_history_at_all_everything_is_discovery():
@@ -130,36 +133,9 @@ def test_wishlist_is_capped_per_bucket_best_first():
 def test_discoveries_are_not_crowded_out_of_the_wishlist():
     tr = {(f"Art{i}", f"Song{i}"): aff(now=10 + i, long=20, total=50 + i, days_ago=1) for i in range(500)}
     ar = {f"Art{i}": art(now=40, total=500, days_ago=1) for i in range(500)}
-    t = Taste(similar=[(f"Far{i}", f"Rec{i}", 0.5) for i in range(40)],
-              genre_tracks=[(f"Gen{i}", f"Hit{i}") for i in range(40)],
-              artist_tracks={"Art1": [("Art1", f"Deep{i}") for i in range(30)]})
+    ar["Known"] = art(now=0.4, total=15, days_ago=100)
+    t = Taste(artist_score={"x": 1.0}, recs=[(f"Far{i}", f"Rec{i}", 0.5) for i in range(40)]
+              + [("Known", f"Deep{i}", 0.5) for i in range(30)])
     _, wanted = assign(t, tr, ar, [], now=NOW)
     kinds = {next(iter(c.sources)) for c in wanted}
     assert {"obsession", "rec", "fresh"} <= kinds and len(wanted) <= 300 + 30
-
-
-def test_fetch_taste_uses_seeds_from_history():
-    calls = []
-
-    def tr(p):
-        calls.append(p)
-        m = p["method"]
-        if m == "user.getLovedTracks":
-            return {"lovedtracks": {"track": [{"name": "L", "artist": {"name": "Love"}}]}}
-        if m == "track.getSimilar":
-            return {"similartracks": {"track": [{"name": "Sim", "artist": {"name": "Other"}, "match": "0.6"}]}}
-        if m == "artist.getTopTracks":
-            return {"toptracks": {"track": [{"name": "Hit", "artist": {"name": p["artist"]}}]}}
-        if m == "artist.getTopTags":
-            return {"toptags": {"tag": [{"name": "seen live"}, {"name": "Industrial"}]}}
-        if m == "tag.getTopTracks":
-            return {"tracks": {"track": [{"name": "GenreSong", "artist": {"name": "G"}}]}}
-        raise AssertionError(m)
-
-    import os
-    os.environ["LASTFM_API_KEY"] = "k"
-    t = taste.fetch_taste("me", [("ArtA", "SongA"), ("ArtB", "SongB")], ["ArtA", "ArtB"], tr)
-    assert t.loved == [("Love", "L")] and len(t.similar) == 2 and set(t.artist_tracks) == {"ArtA", "ArtB"}
-    assert t.genre_tracks[0] == ("G", "GenreSong")
-    assert {c["tag"] for c in calls if c["method"] == "tag.getTopTracks"} == {"industrial"}  # generic tag skipped
-    assert [c["artist"] for c in calls if c["method"] == "track.getSimilar"] == ["ArtA", "ArtB"]

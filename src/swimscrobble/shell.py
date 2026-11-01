@@ -727,7 +727,7 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
     from .library import scan_config
 
     def sync(download: bool) -> str:
-        rep = cli.run_sync(cfg, db, download=download)
+        rep = cli.run_sync(cfg, db, download=download, progress=progress, log=progress)
         p = rep.pool
         return (f"pool +{len(p.added)} -{len(p.retired)} · playlist {rep.playlist_total - len(rep.playlist_missing)}/"
                 f"{rep.playlist_total} found · {len(p.missing)} wishlist entries")

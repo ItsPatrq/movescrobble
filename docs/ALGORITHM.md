@@ -8,7 +8,7 @@ the recommender-systems literature or measured on a real 13-year Last.fm history
 
 ```
 Last.fm history ──► affinity (decayed plays, track + artist) ─┐
-Last.fm similar / genre / artist top tracks ──────────────────┤
+Last.fm taste graph (similar artists/tracks, tags) ──────────┤
 local files ──► audio features (energy, tempo, timbre) ───────┼─► buckets + quality q ─► DPP selection ─► annealed sequence
 swim history (plays, recent swims) ───────────────────────────┘
 ```
@@ -18,7 +18,17 @@ swim history (plays, recent swims) ───────────────
 2. **Buckets** (`buckets.py`): every pool track is judged against that history.
    *obsession*: the artist is hot right now (any of their tracks, played or not); *mid*: played in the last
    90 days; *lost*: played before or loved, silent 90+ days; *fresh*: never played, artist known;
-   *rec*: never played, artist unknown (boosted when Last.fm calls it similar / in your genres).
+   *rec*: never played, artist unknown, scored by the taste graph (below); unconnected ones are left out.
+   **Taste graph** (`taste.py`): nodes are artists, tags and tracks; edges are artist.getSimilar matches,
+   IDF-weighted top tags and track.getSimilar matches for your current favourite tracks. Personalised PageRank
+   (restart 0.3) from your artists weighted by this month's plays, minus the same walk from blocked/skipped
+   artists, divided by degree^0.3 (hubs), times a genre-profile cosine. Podcasts in the history (talk-like
+   titles, "podcast" tags) never seed it. Discoveries are picked MMR-style (each further one through the same
+   seed artist x0.7). The first version pulled `tag.getTopTracks` of broad tags ("electronic"), which is a
+   global chart, not taste: that is how Calvin Harris and Zedd got in. Holdout on the real history (graph from
+   plays before T, did it rank the artists discovered in the next 90 days?): of those it could reach, 3 of 12
+   were in its top 25 of ~700 candidates vs ~0.4 by chance; most discoveries (game soundtracks) were out of
+   its reach.
 3. **Quality** (`mix.py`): q = taste relevance x energy^1.5, damped by how often you already swam to it,
    plus a content bonus for never-played tracks that sound like what you are into (cosine to a taste vector
    built from audio features of your hot tracks, the content-based half of a hybrid recommender).
@@ -35,7 +45,7 @@ swim history (plays, recent swims) ───────────────
 
 | Idea | Used by / source | Here |
 |---|---|---|
-| Hybrid: collaborative filtering + audio + text | Spotify Discover Weekly (secondary descriptions) | Last.fm similar/genre (collaborative signal), local audio features (content), listening history (behaviour) |
+| Hybrid: collaborative filtering + audio + text | Spotify Discover Weekly (secondary descriptions) | Personalised PageRank over a Last.fm similarity + genre graph (collaborative signal), local audio features (content), listening history (behaviour) |
 | Exploration vs exploitation (bandits) | Spotify BaRT | Reserved discovery buckets (*fresh*, *rec*), noise in the selection, novelty bonus for never-swum tracks. No online bandit: a swim gives no skip/like feedback |
 | Diversity-aware ranking via DPP | Chen et al., NeurIPS 2018 (YouTube-scale feeds) | Greedy MAP with incremental Cholesky update + Gumbel noise + bucket steering, with a fallback fill when the determinant collapses |
 | Repeat consumption: recency + frequency, boredom, comebacks | ACT-R relistening (Reiter-Haas et al.), Anderson/Benson models | Decayed counts; *measured* against ACT-R, see below |

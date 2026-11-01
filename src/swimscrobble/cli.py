@@ -22,7 +22,9 @@ from .session import played_part, to_manifest
 def notify(msg: str) -> None:
     print(msg)
     if os.uname().sysname == "Darwin":
-        subprocess.run(["osascript", "-e", f'display notification {json.dumps(msg)} with title "swimscrobble"'])
+        # the text goes in as an argument: quoting it into the script breaks on non-ASCII (json's \u escapes)
+        subprocess.run(["osascript", "-e", "on run argv", "-e", 'display notification (item 1 of argv) with title '
+                        '"swimscrobble"', "-e", "end run", msg], capture_output=True)
 
 
 def cmd_plan(a) -> None:
@@ -130,6 +132,34 @@ def cmd_recap(a) -> None:
     print("\n".join(stats.recap(history.connect(), a.days).lines()))
 
 
+def cmd_recs(a) -> None:
+    """What the taste graph would bring next, and which of your artists lead there."""
+    from . import affinity, taste
+    from rich.console import Console
+
+    from .matcher import norm
+    from .ui import Busy
+
+    cfg = cfgmod.load()
+    db = history.connect()
+    tracks, artists = affinity.compute(db, time.time())
+    busy = Busy(Console())
+    with busy("building your taste graph"):
+        t = taste.recommend(db, cfg.lastfm_user, tracks, artists, sorted({x.artist for x in scan_config(cfg)}),
+                            progress=busy.update)
+    plays = {}
+    for name, aff in artists.items():
+        plays[norm(name)] = plays.get(norm(name), 0) + aff.total
+    print("new to you:")
+    new = [x for x in sorted(t.artist_score, key=lambda x: -t.artist_score[x]) if plays.get(x, 0) < taste.KNOWN_PLAYS]
+    for x in new[:a.n]:
+        print(f"  {t.artist_score[x]:.2f}  {x}" + (f"  (like {', '.join(t.why[x])})" if t.why.get(x) else ""))
+    print("\ntracks to try:")
+    for artist, title, score in t.recs[:a.n]:
+        tag = "new" if plays.get(norm(artist), 0) < taste.KNOWN_PLAYS else "fresh"
+        print(f"  {score:.2f}  {artist} - {title}  [{tag}]")
+
+
 def cmd_block(a) -> None:
     from . import blocklist
 
@@ -175,31 +205,38 @@ def cmd_playlist(a) -> None:
         print("done; re-run to verify" if ok else "download skipped/failed")
 
 
-def run_sync(cfg, db, size: int = 1000, download: str | bool = False):
+def run_sync(cfg, db, size: int = 1000, download: str | bool = False, progress=None, log=print):
     """Fetch playlists, check every pool track against your Last.fm history, refresh the pool.
 
     download: False = report only, "ask" = prompt first, True = fetch missing playlist tracks.
+    `progress` gets step updates (the spinner), `log` the outcome lines.
     """
     from . import acquire, lfhistory, libsync, taste, ytm
+    from .flow import _quiet
+
+    progress = progress or _quiet
 
     def sync_history():
+        progress("reading your recent plays from Last.fm")
         since = int(time.time()) - cfg.history_days * 86400
-        added = lfhistory.sync_history(db, cfg.lastfm_user, log=print, first_since=since)
-        print(f"Last.fm history: +{added} scrobbles")
+        added = lfhistory.sync_history(db, cfg.lastfm_user, log=progress, first_since=since)
+        log(f"Last.fm history: read {added} new plays of yours (only read, to know your taste; nothing scrobbled)")
 
     def dl(missing):
         ask = input if download == "ask" else None
         for url in dict.fromkeys(e.playlist for e in missing):
-            ok = acquire.download_missing(cfg, url, [e for e in missing if e.playlist == url], ask=ask)
-            print("download finished" if ok else "download skipped/failed")
+            ok = acquire.download_missing(cfg, url, [e for e in missing if e.playlist == url], ask=ask,
+                                          progress=progress)
+            log("download finished" if ok else "download skipped/failed")
 
     report = libsync.sync_library(
         cfg, db, size=size,
         fetch_playlist=lambda url: ytm.fetch(url, cookies=cfg.cookies_path),
         history_sync=sync_history,
-        taste_fetch=lambda user, tracks, artists: taste.fetch_taste(user, tracks, artists),
+        taste_fetch=lambda user, tracks, artists, lib: taste.recommend(db, user, tracks, artists, lib, progress=progress),
         download=dl if download else None,
-        fetch_wishes=(lambda w: acquire.fetch_wishes(cfg, db, w, cfg.auto_fetch, ask=input if download == "ask" else None))
+        fetch_wishes=(lambda w: acquire.fetch_wishes(cfg, db, w, cfg.auto_fetch, ask=input if download == "ask" else None,
+                                                     progress=progress))
         if (download and cfg.auto_fetch) else None,
     )
     history.set_meta(db, "last_sync", time.time())
@@ -482,6 +519,9 @@ def main(argv=None) -> None:
     gs = sub.add_parser("garmin-sync", help="read Garmin swims; time the tracks of scrobbled swims (power songs)")
     gs.add_argument("--days", type=int, default=60)
     gs.set_defaults(func=cmd_garmin_sync)
+    rs = sub.add_parser("recs", help="what the taste graph recommends next, and why")
+    rs.add_argument("-n", type=int, default=25)
+    rs.set_defaults(func=cmd_recs)
     bl = sub.add_parser("block", help="never play an artist (or one track); no arguments lists the blocklist")
     bl.add_argument("artist", nargs="?")
     bl.add_argument("title", nargs="?", help="only this track (default: every track by the artist)")

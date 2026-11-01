@@ -20,8 +20,18 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
      - **mid** (15%): played within the last 90 days;
      - **fresh** (15%): never played, but by an artist you do listen to;
      - **lost** (10%): played or loved long ago, silent for 90+ days;
-     - **rec** (20%): never played, by artists you have not played either (discovery), boosted when
-       Last.fm calls them similar to your recent obsession or in your genres.
+     - **rec** (20%): never played, by artists you have not played either (discovery), scored by the
+       taste graph below; a discovery it does not connect to your listening is left out.
+   - **Taste graph** (`taste.py`, see what it suggests with `swimscrobble recs`): artists, genres and tracks
+     linked by Last.fm similarity (artist.getSimilar, track.getSimilar) and IDF-weighted genre tags. A random
+     walk with restart (personalised PageRank) starts from the artists you play *now* (this month counts most)
+     and your current favourite tracks; how often it lands on an artist is how close they are to your taste
+     through every path at once. A walk from artists you blocked or keep skipping is subtracted, each artist is
+     weighted by how well its genres match yours, podcasts in your history are ignored, and discoveries are
+     spread over your artists so one tight cluster cannot take every slot. Tracks to try are the top tracks of
+     the best artists (unknown ones become **rec**, known ones **fresh**) and tracks similar to your current
+     favourites; the wishlist downloads them. Nothing comes from a genre's global chart. Last.fm answers are
+     cached for 30 days.
    - **Selection**: a determinantal point process picks relevant tracks that are also *different* from each
      other (sound and artist), different every run (`variety`), steered towards the bucket shares.
    - **Sequence**: an optimiser orders them as a workout: warm-up, a few surges, a small taper over the swim
@@ -126,7 +136,7 @@ garmin = false               # true after `swimscrobble garmin-auth`
 garmin_auto_submit = true    # a swim found on Garmin is scrobbled without asking
 garmin_soundtrack = true     # write what you swam to into the Garmin activity's description
 warmup_minutes = 7           # with Garmin: music starts this long before the watch (scrobbled too)
-cooldown_minutes = 8         # with Garmin: and plays on this long after the swim (scrobbled too)
+cooldown_minutes = 10        # with Garmin: and plays on this long after the swim (scrobbled too)
 workout = "steady"           # steady | intervals | pyramid | easy
 space_reserve_mb = 200       # always left free on the headphones
 ytm_auth_file = "~/.config/swimscrobble/ytm_browser.json"   # written by `swimscrobble ytm-auth`
@@ -145,6 +155,7 @@ no_repeat_days = 7
 | `reroll [--sync] [--workout W]` | replace the staged playlist on the connected headphones with a fresh one (old session discarded, not scrobbled) |
 | `skip` | forget the staged session without scrobbling (you did not swim) |
 | `eval` | replay your Last.fm history and score the models behind the playlist (reproduces docs/ALGORITHM.md) |
+| `recs [-n N]` | the taste graph's discoveries and tracks to try, with the artists of yours that lead there |
 | `recap [--days N]` | swims, time, distance, tracks, skips, discoveries |
 | `ytm-auth` | YouTube Music browser login, only to add liked discoveries to your playlist |
 | `garmin-auth` | one-time Garmin Connect login (email, password, MFA code if enabled); only tokens are stored |
@@ -152,7 +163,7 @@ no_repeat_days = 7
 | `block [artist] [title] [--remove]` | never play an artist or one track; no arguments lists the blocklist |
 | `lastfm-auth` | one-time Last.fm authorisation (`LASTFM_API_KEY`/`LASTFM_API_SECRET`) |
 | `playlist [url] [--download]` | list which playlist tracks exist under `music_dir`; `--download` fetches the missing ones |
-| `sync [--download [--yes]] [--fetch-missing N]` | refresh the swim pool: Last.fm 30/60/90-day charts, all-time top/loved, similar tracks, artist and genre top tracks, plus the playlist; optionally offer to download N wanted tracks you don't have yet |
+| `sync [--download [--yes]] [--fetch-missing N]` | refresh the swim pool: your Last.fm history and the taste graph, plus the playlist; optionally offer to download N wanted tracks you don't have yet |
 | `podcasts [--done 1,3]` | mark finished episodes played, then mirror newest unplayed episode per Pocket Casts subscription (`POCKETCASTS_EMAIL`/`POCKETCASTS_PASSWORD`) |
 | `on-connect` | the automatic flow (settle previous session, podcasts, plan + stage next) |
 | `agent install` | launchd agent that runs `on-connect` when volumes change |

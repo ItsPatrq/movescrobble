@@ -1,7 +1,6 @@
-import os
 from pathlib import Path
 
-from swimscrobble import acquire, generator, history, matcher, pocketcasts, poolsync, taste, ytm
+from swimscrobble import acquire, generator, history, matcher, pocketcasts, poolsync, ytm
 from swimscrobble.library import Track
 from swimscrobble.planner import plan_session
 
@@ -53,28 +52,6 @@ def test_acquire_gate_and_failures(tmp_path):
     assert acquire.acquire(es, tmp_path / "d", run, ask=lambda _: "n") == es and not calls
     failed = acquire.acquire(es, tmp_path / "d", run, ask=lambda _: "y")
     assert failed == [es[1]] and len(calls) == 2 and "mp3" in calls[0]
-
-
-def test_taste_parsing():
-    def tr(p):
-        m = p["method"]
-        return {
-            "user.getTopTracks": {"toptracks": {"track": [{"name": "S", "artist": {"name": "A"}, "playcount": "9"}]}},
-            "user.getLovedTracks": {"lovedtracks": {"track": [{"name": "L", "artist": {"name": "B"}}]}},
-            "track.getSimilar": {"similartracks": {"track": [{"name": "X", "artist": {"name": "C"}, "match": "0.5"}]}},
-        }[m]
-    os.environ["LASTFM_API_KEY"] = "k"
-    assert taste.top_tracks("u", transport=tr) == [("A", "S", 9)]
-    assert taste.loved_tracks("u", transport=tr) == [("B", "L")]
-    assert taste.similar("A", "S", transport=tr) == [("C", "X", 0.5)]
-
-
-def test_generator_ranking_and_weights():
-    pl = [generator.key("A", "one"), generator.key("B", "two")]
-    c = generator.score_candidates(pl, [("B", "two")], [("C", "three", 50)], [("A", "one", 0.4)])
-    assert c[0].title == "two" and c[0].sources == {"playlist", "loved"}
-    w = generator.pool_weights(c, {generator.key("B", "two"): 3})
-    assert w[generator.key("B", "two")] < c[0].score
 
 
 def test_weighted_plan_prefers_heavy():

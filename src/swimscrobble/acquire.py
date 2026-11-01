@@ -9,6 +9,11 @@ from pathlib import Path
 from .ytm import Entry
 
 
+def quiet_run(cmd: list[str]) -> subprocess.CompletedProcess:
+    """yt-dlp is chatty: keep its output off the screen (the spinner says what is going on)."""
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
 def download_command(entry: Entry, dest: Path) -> list[str]:
     return [
         "yt-dlp", "-x", "--audio-format", "mp3", "--embed-metadata", "--no-playlist",
@@ -20,7 +25,7 @@ def download_command(entry: Entry, dest: Path) -> list[str]:
 def acquire(
     entries: list[Entry],
     dest: Path,
-    run: Callable = subprocess.run,
+    run: Callable = quiet_run,
     ask: Callable[[str], str] | None = None,
 ) -> list[Entry]:
     """Download each entry; `ask` (if given) gates the batch. Returns entries that failed."""
@@ -51,13 +56,15 @@ def playlist_download_command(
 
 
 def download_missing(
-    cfg, url: str, missing: list[Entry], run: Callable = subprocess.run, ask: Callable[[str], str] | None = None
+    cfg, url: str, missing: list[Entry], run: Callable = quiet_run, ask: Callable[[str], str] | None = None,
+    progress: Callable[[str], None] = lambda _: None,
 ) -> bool:
     """Download only the missing playlist positions with the configured command. True if it ran OK."""
     if not missing:
         return True
     if ask and ask(f"Download {len(missing)} missing tracks into {cfg.music_dir}? [y/N] ").strip().lower() != "y":
         return False
+    progress(f"downloading {len(missing)} playlist track{'s' * (len(missing) != 1)}")
     return run(playlist_download_command(cfg, url, [e.index for e in missing if e.index])).returncode == 0
 
 
@@ -109,7 +116,7 @@ def balanced(wishes: list, weights: dict[str, float] | None) -> list:
     return out
 
 
-def download_video(cfg, video_id: str, run: Callable = subprocess.run) -> bool:
+def download_video(cfg, video_id: str, run: Callable = quiet_run) -> bool:
     """Download one YouTube Music song into the library folder with the configured command."""
     out = str(cfg.music_path / "%(album|Singles)s" / "%(artist,channel)s - %(title)s.%(ext)s")
     cmd = playlist_download_command(cfg, f"https://music.youtube.com/watch?v={video_id}", output=out)
@@ -122,9 +129,10 @@ def fetch_wishes(
     wishes: list,
     limit: int,
     search: Callable[[str], list[dict]] = yt_search,
-    run: Callable = subprocess.run,
+    run: Callable = quiet_run,
     ask: Callable[[str], str] | None = None,
     now: float | None = None,
+    progress: Callable[[str], None] = lambda _: None,
 ) -> int:
     """Download up to `limit` wishlist tracks into the library folder (cfg.music_dir). Remembers outcomes so nothing
     that was not found (or already fetched) is retried on every sync. Returns the number fetched."""
@@ -151,6 +159,7 @@ def fetch_wishes(
     for key, w in todo:
         if fetched >= limit:
             break
+        progress(f"downloading {fetched + 1}/{limit}: {w.artist} - {w.title}")
         entry = find_song(w.artist, w.title, search)
         status = "notfound"
         if entry:

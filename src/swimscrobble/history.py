@@ -57,6 +57,7 @@ MIGRATIONS = [  # append only; PRAGMA user_version counts how many have run
     _sql("""CREATE TABLE IF NOT EXISTS swim_tracks(
       activity_id INTEGER, artist TEXT, title TEXT, lengths INTEGER, distance_m REAL, seconds REAL, hr REAL,
       swolf REAL, rel_speed REAL)"""),  # rel_speed: this track's speed over the whole swim's, minus 1
+    _sql("CREATE TABLE IF NOT EXISTS lastfm_cache(key TEXT PRIMARY KEY, at REAL, body TEXT)"),  # taste graph data
 ]
 
 

@@ -191,7 +191,7 @@ def test_garmin_swim_scrobbles_its_real_start_and_length_without_asking(env):
     log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 10, 0), find_swim=find,
                     lastfm_submit=lambda s: (sent.append(s) or len(s)))
     assert windows == [(datetime(2026, 10, 25, 7, 0), datetime(2026, 10, 25, 10, 0))]
-    # the music started warmup_minutes (7) before the watch and ran cooldown_minutes (8) after: 45 min from 8:08
+    # the music started warmup_minutes (7) before the watch and ran cooldown_minutes (10) after: 47 min from 8:08
     assert len(sent[0]) == 9 and sent[0][0].timestamp == datetime(2026, 10, 25, 8, 8)
     assert log[0].startswith("Garmin lap swimming") and "scrobbled 9 tracks" in log[0] and "staged session" in log[-1]
     assert db.execute("SELECT swum_minutes FROM sessions WHERE status='scrobbled'").fetchone()[0] == 30  # the swim

@@ -84,7 +84,7 @@ def test_pool_is_the_playlist_and_history_decides_buckets(tmp_path):
     lib = [T("Closterkeller", "Białe wino"), T("NIN", "Closer"), T("Not In Playlist", "Hidden")]
     entries = [Entry("1", "Closterkeller", "Białe wino", 200, 1), Entry("2", "NIN", "Closer", 200, 2)]
     seeds = []
-    taste = lambda user, tracks, artists: (seeds.append((tracks, artists)) or Taste())  # noqa: E731
+    taste = lambda user, tracks, artists, lib: (seeds.append((list(tracks), list(artists), lib)) or Taste())  # noqa: E731
     cfg = make_cfg(tmp_path)
     cfg.ytm_playlists = ["https://music.youtube.com/playlist?list=Y"]
     cfg.pool = "playlist"
@@ -94,7 +94,8 @@ def test_pool_is_the_playlist_and_history_decides_buckets(tmp_path):
     pool = {(r["artist"], r["title"]): r["source"] for r in db.execute("SELECT artist, title, source FROM pool")}
     assert pool == {("closterkeller", "białe wino"): "mid", ("nin", "closer"): "rec"}  # keyed by LOCAL tags; 1 play = mid
     assert ("not in playlist", "hidden") not in pool  # outside the playlist: not eligible
-    assert syncs == [1] and seeds == [([("Closterkeller", "Biale wino")], ["Closterkeller"])]
+    assert syncs == [1] and seeds == [([("Closterkeller", "Biale wino")], ["Closterkeller"],
+                                       ["Closterkeller", "NIN", "Not In Playlist"])]  # history + library artists
     assert rep.playlist_total == 4  # two playlists configured (ytm_playlist + ytm_playlists), 2 entries each
 
     cfg.pool = "library"
@@ -180,6 +181,26 @@ def test_fetch_wishes_stops_at_the_quota(tmp_path):
     ws = [wish(f"A{i}", f"S{i}") for i in range(10)]
     search = lambda q: [song("v" + q.split()[0], q.split()[0], q.split()[1])]  # noqa: E731
     assert acquire.fetch_wishes(cfg, db, ws, 3, search, lambda c: (ran.append(c) or R())) == 3 and len(ran) == 3
+
+
+def test_fetch_wishes_reports_each_download_and_keeps_yt_dlp_quiet(tmp_path, monkeypatch):
+    db = history.connect(tmp_path / "h.db")
+    cfg = Config(music_dir=str(tmp_path / "lib"))
+    calls, steps = [], []
+    monkeypatch.setattr(acquire.subprocess, "run", lambda cmd, **kw: calls.append(kw) or type("R", (), {"returncode": 0}))
+    search = fake_search({"A One": [song("v1", "A", "One")]})
+    assert acquire.fetch_wishes(cfg, db, [wish("A", "One")], 2, search, progress=steps.append) == 1
+    assert steps == ["downloading 1/2: A - One"] and calls[0]["capture_output"]  # nothing printed over the spinner
+
+
+def test_notify_passes_the_text_as_an_argument(monkeypatch):
+    from swimscrobble import cli
+
+    ran = []
+    monkeypatch.setattr(cli.os, "uname", lambda: type("U", (), {"sysname": "Darwin"}))
+    monkeypatch.setattr(cli.subprocess, "run", lambda cmd, **kw: ran.append(cmd))
+    cli.notify('10 podcasts · "quoted" swim')
+    assert ran[0][-1] == '10 podcasts · "quoted" swim'  # not spliced into the AppleScript source
 
 
 def test_fetch_wishes_respects_ask_and_failures(tmp_path):

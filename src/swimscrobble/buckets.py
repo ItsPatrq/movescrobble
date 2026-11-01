@@ -4,7 +4,8 @@ obsession  by an artist you are into right now (decayed artist plays), any of th
 mid        played within the last 90 days, artist not hot
 lost       played before (2+ times or loved), silent for 90+ days
 fresh      never played, but by an artist you played in the past year
-rec        never played, artist unknown to you (discovery), boosted when Last.fm calls it similar
+rec        never played, artist unknown to you: a discovery, scored by the taste graph (taste.py); one the graph
+           does not connect to your listening is left out instead of filling the quota
 
 Obsession is defined by *artist*, not by track: in your history only ~9% of a month's plays are tracks
 from the month before, but 32% of the new-to-you tracks are by an artist you played that month.
@@ -27,6 +28,8 @@ HOT_ARTIST = 0.5  # squash(artist decayed plays, 30) at/above this = "obsession 
 WISH_MIN_PLAYS = 3
 WISH_MAX_AGE = 365 * DAY  # only ask for tracks you still listen to, not what you played in 2014
 MAX_WISHES = 300  # split between buckets in proportion to their mix share
+NO_GRAPH_FIT = 0.35  # without a taste graph (no Last.fm user) every track counts as a middling fit
+REC_MIN = 0.2  # a discovery the taste graph scores below this is not worth a place in the playlist
 # podcast / video / long-form titles that end up in Last.fm history but are not songs
 NOT_A_SONG = re.compile(r"#\d+|\b(episode|odcinek|ep\.)\s*\d+|\||\bpodcast\b", re.I)
 
@@ -63,7 +66,8 @@ def classify(a: Aff | None, art: ArtistAff | None, loved: bool, now: float) -> s
     return "rec"
 
 
-def score(bucket: str, a: Aff | None, art: ArtistAff | None, loved: bool, boost: float, famous: bool) -> float:
+def score(bucket: str, a: Aff | None, art: ArtistAff | None, loved: bool, fit: float) -> float:
+    """`fit`: the taste graph's 0..1 opinion of the track (or its artist)."""
     r = relevance(a, art)
     if bucket in ("obsession", "mid"):
         return max(0.15, r) + 0.01 * squash(a.total if a else 0, 1000)  # tiebreak among saturated scores
@@ -71,8 +75,8 @@ def score(bucket: str, a: Aff | None, art: ArtistAff | None, loved: bool, boost:
         loyal = squash(a.weeks, 20) if a else 0.0
         return 0.2 + 0.5 * squash(a.long if a else 0.0, 3) + 0.2 * loyal + (0.1 if loved else 0.0)
     if bucket == "fresh":
-        return 0.25 + 0.5 * squash(art.now if art else 0.0, 30) + (0.15 if famous else 0.0)
-    return max(0.35, boost)  # rec: discovery, boosted when Last.fm calls it similar
+        return 0.2 + 0.4 * squash(art.now if art else 0.0, 30) + 0.4 * fit
+    return fit  # rec: only as good as its place in your taste graph
 
 
 def assign(
@@ -89,6 +93,7 @@ def assign(
     `pool` holds local keys (casefolded artist, title) eligible for the session; None = whole library.
     """
     idx = idx or LocalIndex(library)
+    fit = taste.fit if taste and taste.artist_score else (lambda a, t: NO_GRAPH_FIT)
     taste = taste or Taste()
     lkey = lambda t: (t.artist.casefold(), t.title.casefold())  # noqa: E731
 
@@ -108,14 +113,6 @@ def assign(
             old.now + aff.now, max(old.last, aff.last), old.total + aff.total)
 
     loved = {lkey(tr) for a, t in taste.loved if (tr := idx.find(a, t))}
-    boost: dict[tuple[str, str], float] = {}
-    for a, t, m in taste.similar:
-        if tr := idx.find(a, t):
-            boost[lkey(tr)] = max(boost.get(lkey(tr), 0.0), 0.3 + 0.5 * m)
-    for a, t in taste.genre_tracks:
-        if tr := idx.find(a, t):
-            boost[lkey(tr)] = max(boost.get(lkey(tr), 0.0), 0.4)
-    famous = {(norm(a), norm(t)) for tr_ in taste.artist_tracks.values() for a, t in tr_}
 
     owned: list[Candidate] = []
     for t in library:
@@ -125,8 +122,9 @@ def assign(
         a, art = owned_aff.get(k), artist_aff.get(norm(t.artist))
         is_loved = k in loved
         b = classify(a, art, is_loved, now)
-        owned.append(Candidate(t.artist, t.title, score(b, a, art, is_loved, boost.get(k, 0.0),
-                                                        (norm(t.artist), norm(t.title)) in famous), {b}))
+        s = score(b, a, art, is_loved, fit(t.artist, t.title))
+        if b != "rec" or s >= REC_MIN:
+            owned.append(Candidate(t.artist, t.title, s, {b}))
 
     # wishes: what you clearly like (or Last.fm suggests) but have no file for
     wanted: dict[tuple[str, str], Candidate] = {}
@@ -139,17 +137,14 @@ def assign(
         if aff.total >= WISH_MIN_PLAYS and recent_enough and looks_like_song(t):  # played repeatedly, nothing local
             art = artist_aff.get(norm(a))
             b = classify(aff, art, False, now)
-            want(a, t, b, score(b, aff, art, False, 0.0, False))
-    for a, t, m in taste.similar:
-        if not idx.find(a, t) and (a, t) not in tracks:
-            want(a, t, "rec", 0.3 + 0.5 * m)
-    for a, t in taste.genre_tracks:
-        if not idx.find(a, t) and (a, t) not in tracks:
-            want(a, t, "rec", 0.4)
-    for tr_ in taste.artist_tracks.values():
-        for a, t in tr_:
-            if not idx.find(a, t) and (a, t) not in tracks:
-                want(a, t, "fresh", 0.4)
+            want(a, t, b, score(b, aff, art, False, fit(a, t)))
+    for a, t, s in taste.recs:  # the taste graph's picks you have no file for (never played: recs exclude those)
+        if not idx.find(a, t):
+            art = artist_aff.get(norm(a))
+            b = classify(None, art, False, now)
+            s = score(b, None, art, False, s)
+            if b != "rec" or s >= REC_MIN:
+                want(a, t, b, s)
 
     # cap per bucket (not overall), otherwise heavily played tracks crowd out discoveries
     per_bucket: dict[str, list[Candidate]] = {}

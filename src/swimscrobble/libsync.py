@@ -31,7 +31,7 @@ def sync_library(
     size: int = 1000,
     fetch_playlist: Callable[[str], list[Entry]],
     history_sync: Callable[[], object] | None = None,
-    taste_fetch: Callable[[str, list, list], Taste] | None = None,
+    taste_fetch: Callable[[str, dict, dict, list[str]], Taste] | None = None,
     download: Callable[[list[Entry]], None] | None = None,
     fetch_wishes: Callable[[list], int] | None = None,
     library_loader: Callable[[], list[Track]] | None = None,
@@ -64,10 +64,8 @@ def sync_library(
         if history_sync:
             history_sync()
         tracks, artists = affinity.compute(db, when)
-        recent = sorted((kv for kv in tracks.items() if kv[1].now > 0.5), key=lambda kv: -kv[1].now)
-        hot = sorted((kv for kv in artists.items() if kv[1].now > 0.5), key=lambda kv: -kv[1].now)
         if taste_fetch:
-            taste = taste_fetch(cfg.lastfm_user, [k for k, _ in recent[:10]], [a for a, _ in hot])
+            taste = taste_fetch(cfg.lastfm_user, tracks, artists, sorted({t.artist for t in library}))
 
     def judge():
         """Pool first (the library folder, or just the playlist tracks), then check each against the history."""
