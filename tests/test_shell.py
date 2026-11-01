@@ -363,7 +363,7 @@ def test_scrobble_screen_offers_the_garmin_swim(env):
     shell.act.find_swim = lambda since, until: Swim(datetime(2026, 10, 25, 8, 0), 20.0, "lap_swimming")
     shell.run()
     # 7 warm-up + 20 swum + 10 after, of 5-min tracks
-    assert "Garmin: lap swimming" in text(out) and fake.calls[-1] == ("submit", 7)
+    assert "Garmin: lap swimming" in text(out) and fake.calls[-1] == ("submit", 8)
 
 
 def test_podcast_screen_marks_finished_episodes_then_syncs(env):

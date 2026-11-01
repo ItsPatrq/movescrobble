@@ -49,8 +49,8 @@ class Config:
     loudness_target: float = -11  # LUFS every staged track is brought to (0 = copy files untouched; TOML has no null)
     garmin: bool = False  # take swim start + length from Garmin Connect (run `swimscrobble garmin-auth` once)
     garmin_auto_submit: bool = True  # a swim found on Garmin is proof enough: scrobble it without asking
-    warmup_minutes: float = 7  # with Garmin: the music starts this long before the watch (shower, warm-up)
-    cooldown_minutes: float = 10  # with Garmin: and keeps playing this long after it stops
+    warmup_minutes: float = 8  # with Garmin: the music starts this long before the watch (shower, warm-up)
+    cooldown_minutes: float = 11  # with Garmin: and keeps playing this long after it stops
     garmin_soundtrack: bool = True  # write what you swam to into the Garmin activity's description (shows on Strava)
     arc: bool = False
     mix_weights: dict[str, float] = field(default_factory=lambda: {

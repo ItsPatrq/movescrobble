@@ -135,8 +135,8 @@ loudness_target = -11        # LUFS; 0 = copy files untouched
 garmin = false               # true after `swimscrobble garmin-auth`
 garmin_auto_submit = true    # a swim found on Garmin is scrobbled without asking
 garmin_soundtrack = true     # write what you swam to into the Garmin activity's description
-warmup_minutes = 7           # with Garmin: music starts this long before the watch (scrobbled too)
-cooldown_minutes = 10        # with Garmin: and plays on this long after the swim (scrobbled too)
+warmup_minutes = 8           # with Garmin: music starts this long before the watch (scrobbled too)
+cooldown_minutes = 11        # with Garmin: and plays on this long after the swim (scrobbled too)
 workout = "steady"           # steady | intervals | pyramid | easy
 space_reserve_mb = 200       # always left free on the headphones
 ytm_auth_file = "~/.config/swimscrobble/ytm_browser.json"   # written by `swimscrobble ytm-auth`
