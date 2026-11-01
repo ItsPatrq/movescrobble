@@ -278,3 +278,85 @@ def test_plain_flag_and_env_force_line_mode(env, monkeypatch):
 def test_end_of_input_leaves_the_shell_quietly(env):
     shell, _, _ = keyed_shell(env, [])
     shell.run()  # no keys at all: EOF in the menu returns instead of raising
+
+
+def fake_taste():
+    from swimscrobble.taste import Taste
+
+    return Taste(artist_score={"artist1": 0.8, "new artist": 0.6}, seeds={"Artist0": 2.0},
+                 why={"artist1": ["Artist0"], "new artist": ["Artist0"]},
+                 names={"artist1": "Artist1", "new artist": "New Artist"},
+                 recs=[("New Artist", "Fresh Song", 0.7), ("Artist1", "Song1", 0.75)], known={"artist0", "artist1"})
+
+
+def discover_shell(env, presses):
+    shell, fake, out = keyed_shell(env, presses)
+    built, played = [], []
+    shell.act.recommend = lambda: (built.append(1) or fake_taste())
+    shell.act.preview_file = lambda t: played.append(("file", t.artist, t.title))
+    shell.act.preview_song = lambda a, t: played.append(("song", a, t)) or True
+    shell.act.stop_preview = lambda: played.append(("stop",))
+    return shell, fake, out, built, played
+
+
+def test_discover_shows_the_graph_previews_steers_rebuilds_and_downloads(env):
+    cfg, db, *_ = env
+    keys_ = ["d",                     # open Discover: the graph tab
+             "+",                     # cursor on Artist0 (a seed): more like it
+             "2", "enter",            # in your files: play a clip of the best one
+             "3", "enter", "d",       # to get: play New Artist - Fresh Song, then download it
+             "4", "right", "g",       # adjust: first knob one step further, rebuild
+             "q", "q"]
+    shell, fake, out, built, played = discover_shell(env, keys_)
+    shell.run()
+    assert played[0][0] == "file" and played[0][1] == "Artist1"  # top of "in your files": fit 0.8
+    assert ("song", "New Artist", "Fresh Song") in played and ("download", "wish1") in fake.calls
+    assert len(built) == 2 and played[-1] == ("stop",)  # rebuilt once; leaving stops the clip
+    from swimscrobble.taste import Tuning
+
+    t = Tuning.load(db)
+    assert t.more == ["Artist0"] and t.answer("reach") == "far afield"
+
+
+def test_discover_blocks_a_track_from_the_list(env):
+    cfg, db, *_ = env
+    shell, *_ = discover_shell(env, ["d", "3", "b", "q", "q"])
+    shell.run()
+    assert db.execute("SELECT artist, title FROM blocked").fetchall()[0][:] == ("New Artist", "Fresh Song")
+
+
+def test_discover_without_lastfm_says_so(env):
+    shell, _, out = keyed_shell(env, ["d", "any", "q"])
+    shell.run()
+    assert "needs Last.fm" in out.getvalue()
+
+
+def test_discover_graph_tab_draws_a_connected_graph(env):
+    from swimscrobble.shell import _Discover
+
+    shell, _, out, *_ = discover_shell(env, [])
+    d = _Discover(shell)
+    shell.console.print(d.render(0))
+    screen = out.getvalue()
+    assert "◉ you" in screen and "Artist0" in screen and "Artist1" in screen and "New Artist" in screen
+    assert any(0x2800 < ord(c) <= 0x28FF for c in screen)  # edges drawn in braille
+    assert "one of your artists now" in screen  # side panel of the selected node (Artist0)
+    d.tab = 3
+    shell.console.print(d.render(0))
+    assert "How far from your artists ◂ balanced ▸" in re.sub(r"\s+", " ", out.getvalue())
+
+
+def test_discover_graph_arrows_move_and_the_panel_plays_an_artists_track(env):
+    shell, _, out, built, played = discover_shell(env, ["d", "enter", "down", "enter", "esc", "q", "q"])
+    shell.run()
+    assert played[0][:2] == ("file", "Artist0")  # Enter on Artist0 opens its tracks, ↓ Enter plays the second
+
+
+def test_discover_puts_a_pick_first_in_the_playlist_downloading_it(env):
+    cfg, db, *_ = env
+    staged(env)
+    shell, fake, *_ = discover_shell(env, ["d", "3", "f", "q", "q"])
+    shell.run()
+    first = sorted(json.loads(history.pending_session(db)["manifest"])["tracks"], key=lambda t: t["position"])[0]
+    assert ("download", "wish1") in fake.calls and (first["artist"], first["title"]) == ("New Artist", "Fresh Song")
+    assert first["source"] == "added"

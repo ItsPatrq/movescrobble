@@ -106,11 +106,16 @@ def test_pocketcasts_failed_download_skips_only_that_episode(tmp_path):
 
 def test_pocketcasts_latest_unplayed_per_subscription():
     subs = [
-        {"uuid": "old", "lastEpisodeUuid": "e-old", "lastEpisodePublished": "2026-10-01T00:00:00Z", "lastEpisodePlayingStatus": 1},
-        {"uuid": "new", "lastEpisodeUuid": "e-new", "lastEpisodePublished": "2026-10-20T00:00:00Z", "lastEpisodePlayingStatus": 2},
-        {"uuid": "done", "lastEpisodeUuid": "e-done", "lastEpisodePublished": "2026-10-24T00:00:00Z", "lastEpisodePlayingStatus": 3},
-        {"uuid": "arch", "lastEpisodeUuid": "e-arch", "lastEpisodePublished": "2026-10-23T00:00:00Z", "lastEpisodeArchived": True},
-        {"uuid": "mid", "lastEpisodeUuid": "e-mid", "lastEpisodePublished": "2026-10-10T00:00:00Z", "lastEpisodePlayingStatus": 1},
+        {"uuid": "old", "lastEpisodeUuid": "e-old", 
+         "lastEpisodePublished": "2026-10-01T00:00:00Z", "lastEpisodePlayingStatus": 1},
+        {"uuid": "new", "lastEpisodeUuid": "e-new", 
+         "lastEpisodePublished": "2026-10-20T00:00:00Z", "lastEpisodePlayingStatus": 2},
+        {"uuid": "done", "lastEpisodeUuid": "e-done", 
+         "lastEpisodePublished": "2026-10-24T00:00:00Z", "lastEpisodePlayingStatus": 3},
+        {"uuid": "arch", "lastEpisodeUuid": "e-arch", 
+         "lastEpisodePublished": "2026-10-23T00:00:00Z", "lastEpisodeArchived": True},
+        {"uuid": "mid", "lastEpisodeUuid": "e-mid", 
+         "lastEpisodePublished": "2026-10-10T00:00:00Z", "lastEpisodePlayingStatus": 1},
     ]
     calls = []
     def t(path, body, tok):

@@ -194,11 +194,12 @@ one key per action:
 | `r` | reroll: a new playlist (optionally refreshing Last.fm first, optional seed); the old one is discarded, not scrobbled |
 | `a` | add a track: search your library, or YouTube Music (downloads it), then pick the position; slow tracks are flagged |
 | `s` | statistics: top artists and tracks, how much of your listening is new / returning / repeat, library and pool, swims |
+| `d` | discover: the taste graph in four tabs. **Graph**: drawn as a graph: you in the middle, the artists you play now around you, the artists each leads to on the outside, joined by lines (dotted when a second artist of yours leads there too; ♪ = in your files). Arrow keys move between artists, the side panel says why one is there and lists its tracks (♪ yours, ↓ to get); `Enter` steps into that list, `o` opens a draggable version in the browser. **In your files** / **To get**: the same picks as lists. Everywhere: `Enter` plays a 30-second clip (local file, or fetched from YouTube Music; `s` stops), `f` puts the track first in the staged playlist (downloading it first if needed), `d` downloads, `+` / `-` steer by the artist (more / less like it), `b` blocks. **Adjust**: how far from your artists to look, how much genre matters, how much to spread picks over your artists, this month vs the last months; `g` rebuilds, `a` refreshes the pool with it (and offers a re-roll). Settings are saved and every later sync uses them |
 | `w` | wishlist (balanced across buckets): download chosen tracks right now |
 | `y` | sync: Last.fm history, pool, downloads |
 | `c` | scrobble the last swim: how long you swam, which tracks you skipped, preview, send; then stage the next |
 | `k` | skip: forget the staged playlist (you did not swim) |
-| `u` / `x` | use / remove staged files still on the headphones after a discarded session (the dashboard warns when there are some) |
+| `u` | leftovers: staged files still on the headphones after a discarded session (the dashboard warns when there are some); asks whether to use them again or remove them |
 | `o` / `e` / `g` | podcasts / run the whole automatic routine now / install or remove the launchd agent |
 
 **Keyboard navigation**: on a terminal the menu is driven by `↑`/`↓` (or `j`/`k`), `Enter` and `Esc`; every
@@ -210,7 +211,7 @@ drops it; `d` deletes (with confirmation), `a` adds, `r` rerolls, `q` goes back.
 
 **What "staged" means**: the playlist this tool copied to the headphones (files named `001 - …`) and recorded in
 its database, so it knows what to scrobble. If you discard the record (`k`) but leave the files, they still play;
-the dashboard then says "none tracked" and offers `u` (adopt them again) or `x` (remove them). `k` now also offers
+the dashboard then says "none tracked" and offers `u` (use them again, or remove them). `k` now also offers
 to remove the files.
 
 The shell and the agent share everything (database, config, device state), so use either, or both: the agent

@@ -61,14 +61,20 @@ class KeyUI:
 
     # -- core loop --------------------------------------------------------------------------------
     def _loop(self, render: Callable[[int], Group | Text], n: int, on_key: Callable[[str, int], tuple[int, object]],
-              start: int = 0, on_move: Callable[[int, int], None] | None = None, vim: bool = True):
-        """Redraw after every key. on_key(key, index) -> (new_index, result); result not None ends the loop."""
+              start: int = 0, on_move: Callable[[int, int], None] | None = None, vim: bool = True,
+              arrows: bool = True):
+        """Redraw after every key. on_key(key, index) -> (new_index, result); result not None ends the loop.
+        `arrows=False` hands the arrow keys to on_key too (for screens that are not a list)."""
         idx = max(0, min(start, n - 1)) if n else 0
         with self._raw(), Live(render(idx), console=self.console, auto_refresh=False, transient=True) as live:
             while True:
                 key = self._read()
                 before = idx
-                if key == "up" or (vim and key == "k"):
+                if not arrows:
+                    idx, result = on_key(key, idx)
+                    if result is not None:
+                        return result
+                elif key == "up" or (vim and key == "k"):
                     idx = (idx - 1) % n if n else 0
                 elif key == "down" or (vim and key == "j"):
                     idx = (idx + 1) % n if n else 0

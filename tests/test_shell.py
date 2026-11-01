@@ -300,11 +300,11 @@ def test_dashboard_warns_about_leftover_files_and_they_can_be_adopted_or_removed
     shell, _, out = make(env, "q")
     shell.run()
     assert "none tracked" in text(out) and f"{n} tracks of discarded session" in text(out)
-    shell, _, out = make(env, "u", "q")
+    shell, _, out = make(env, "u", "u", "q")
     shell.run()
     assert history.pending_session(db) is not None and "current playlist again" in text(out)
     history.discard_pending(db)
-    shell, _, out = make(env, "x", "y", "q")
+    shell, _, out = make(env, "u", "x", "y", "q")
     shell.run()
     assert list(folder.iterdir()) == [] and history.pending_session(db) is None
 
@@ -362,7 +362,8 @@ def test_scrobble_screen_offers_the_garmin_swim(env):
     shell, fake, out = make(env, "c", "", "", "y", "n", "q")  # accept the Garmin length, no skips, send
     shell.act.find_swim = lambda since, until: Swim(datetime(2026, 10, 25, 8, 0), 20.0, "lap_swimming")
     shell.run()
-    assert "Garmin: lap swimming" in text(out) and fake.calls[-1] == ("submit", 7)  # 7 warm-up + 20 swum + 8 after, of 5-min tracks
+    # 7 warm-up + 20 swum + 10 after, of 5-min tracks
+    assert "Garmin: lap swimming" in text(out) and fake.calls[-1] == ("submit", 7)
 
 
 def test_podcast_screen_marks_finished_episodes_then_syncs(env):
@@ -412,3 +413,19 @@ def test_blocklist_screen_unblocks_and_blocks(env):
     shell.run()
     assert blocklist.entries(db) == [("Artist2", "Song2"), ("The Weeknd", "")]
     assert "unblocked Artist1 (all tracks)" in text(out)
+
+
+def test_discover_in_line_mode_lists_previews_and_steers(env):
+    from test_keyboard import fake_taste
+
+    from swimscrobble.taste import Tuning
+
+    cfg, db, *_ = env
+    shell, fake, out = make(env, "d", "g1", "+Artist5", "", "q")
+    played = []
+    shell.act.recommend = fake_taste
+    shell.act.preview_song = lambda a, t: played.append((a, t)) or True
+    shell.run()
+    t = text(out)
+    assert "In your files" in t and "To get" in t and "New Artist - Fresh Song" in t
+    assert played == [("New Artist", "Fresh Song")] and Tuning.load(db).more == ["Artist5"]

@@ -65,7 +65,8 @@ class Config:
     min_energy: float = 0.5  # drop slow/ballad tracks below this energy (0..1)
     workout: str = "steady"  # energy curve over the swim: steady | intervals | easy | pyramid (per swim: reroll --workout)
     space_reserve_mb: float = 200  # always left free on the headphones
-    ytm_auth_file: str = "~/.config/swimscrobble/ytm_browser.json"  # `swimscrobble ytm-auth`: lets liked tracks go to your playlist
+    # `swimscrobble ytm-auth` writes it: lets liked tracks go to your playlist
+    ytm_auth_file: str = "~/.config/swimscrobble/ytm_browser.json"
     volumes_dir: str = "/Volumes"
     stage_subdir: str = ""  # under the device music folder; "" = its root
     lastfm_user: str = ""

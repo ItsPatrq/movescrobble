@@ -256,3 +256,39 @@ def test_balanced_wishes_follow_the_bucket_shares():
     assert first.count("obsession") == 5 and first.count("rec") == 3 and first.count("lost") == 2
     assert [c.title for c in out if "obsession" in c.sources][:3] == ["o0", "o1", "o2"]  # best first
     assert len(out) == 90 and acquire.balanced(ws, None) == ws
+
+
+def test_preview_command_cuts_a_section_without_tags_or_cover(tmp_path):
+    cfg = make_cfg(tmp_path)
+    cmd = acquire.preview_command(cfg, "vid", "/tmp/p/remote.%(ext)s", 70, 100)
+    assert cmd[-1] == "https://music.youtube.com/watch?v=vid" and cmd[-4:-2] == ["--download-sections", "*70-100"]
+    assert "--embed-thumbnail" not in cmd and "--parse-metadata" not in cmd and "playlist_index:%(track_number)s" not in cmd
+    assert cmd[cmd.index("--output") + 1] == "/tmp/p/remote.%(ext)s" and "--extract-audio" in cmd
+
+
+def test_player_streams_a_clip_and_stops_the_previous_one(tmp_path):
+    from types import SimpleNamespace
+
+    from swimscrobble.preview import Player
+
+    started, stopped = [], []
+
+    class Proc:
+        def __init__(self, cmd, **kw):
+            started.append(cmd)
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            stopped.append(1)
+
+    def run(cmd):
+        (tmp_path / "remote.mp3").write_bytes(b"clip")
+    found = lambda a, t: SimpleNamespace(video_id="v", duration=200) if a != "Nobody" else None  # noqa: E731
+    p = Player(make_cfg(tmp_path), folder=tmp_path, popen=Proc, run=run, find_song=found)
+    assert p.play_song("Band", "Song") and started[-1][-1].endswith("remote.mp3")
+    assert p.play_song("Band", "Other") and stopped == [1]  # one clip at a time
+    assert not p.play_song("Nobody", "Song")
+    p.stop()
+    assert p.proc is None

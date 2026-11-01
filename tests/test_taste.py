@@ -81,7 +81,8 @@ def test_podcasts_in_the_history_are_not_taste():
                 "Harry Potter and the Cursed Video Game", "Kryzys gier AAA"]
     assert spoken(episodes, [])
     assert spoken(["A", "B", "C", "D", "E"], [("podcast", 1.0)])
-    songs = ["Enjoy the Silence", "Personal Jesus", "Never Let Me Go", "Strangelove", "Handcuffed to a Parking Meter (feat. Sparks)"]
+    songs = ["Enjoy the Silence", "Personal Jesus", "Never Let Me Go", "Strangelove",
+             "Handcuffed to a Parking Meter (feat. Sparks)"]
     assert not spoken(songs, [])
     assert not spoken(songs[:3] + episodes[:2], [("synthpop", 1.0)])  # a band with long titles but real genres
 
@@ -96,7 +97,8 @@ def test_one_cluster_does_not_take_every_slot():
 def test_recommend_end_to_end(db):
     tracks = {("Depeche Mode", "Enjoy the Silence"): hot(30), ("Nine Inch Nails", "Closer"): hot(20),
               ("Talk Show", "Why Are Games So Much Like Jobs?"): hot(40), ("Talk Show", "Is GTA VI Late Again Today?"): hot(40),
-              ("Talk Show", "The State of Video Game Consoles"): hot(40), ("Talk Show", "Harry Potter and the Cursed Game"): hot(40),
+              ("Talk Show", "The State of Video Game Consoles"): hot(40),
+              ("Talk Show", "Harry Potter and the Cursed Game"): hot(40),
               ("Talk Show", "Does Video-Game Marketing Really Work?"): hot(40)}
     artists = {"Depeche Mode": ArtistAff(30, int(NOW), 900), "Nine Inch Nails": ArtistAff(20, int(NOW), 700),
                "Talk Show": ArtistAff(40, int(NOW), 200)}
@@ -124,3 +126,63 @@ def test_recommend_end_to_end(db):
     assert not any(a == "Pop Star" for a, _ in recs)
     assert set(t.why["both band"]) == {"Depeche Mode", "Nine Inch Nails"}
     assert t.fit("Both Band", "Dark Hit") >= t.fit("Both Band", "Never Heard Of") == s["both band"]
+
+
+def test_tuning_is_saved_and_steering_replaces_the_opposite_wish(db):
+    t = taste.Tuning.load(db)
+    assert (t.reach, t.genre, t.more) == (1, 1, [])
+    t.turn("reach", 1)
+    t.turn("reach", 1)  # stops at the last answer
+    t.steer("Kyuss", True)
+    t.steer("Zedd", False)
+    t.steer("kyuss", False)  # changed your mind: now less
+    t.save(db)
+    back = taste.Tuning.load(db)
+    assert back.answer("reach") == "far afield" and back.value("reach") == 0.15
+    assert back.more == [] and back.less == ["Zedd", "kyuss"]
+
+
+def test_more_and_less_like_steer_the_walk(db):
+    tracks = {("Depeche Mode", "Enjoy the Silence"): hot(30)}
+    artists = {"Depeche Mode": ArtistAff(30, int(NOW), 900)}
+    tr = fake_lastfm(similar={"Depeche Mode": [("Synth A", 0.8), ("Synth B", 0.7)], "Kyuss": [("Desert Band", 0.9)]},
+                     tags={"Depeche Mode": [("synthpop", 100)], "Synth A": [("synthpop", 100)],
+                           "Synth B": [("synthpop", 100)], "Kyuss": [("stoner rock", 100)],
+                           "Desert Band": [("stoner rock", 100)]})
+    lf = Lastfm(db, tr, now=NOW, sleep=lambda _: None)
+    plain = recommend(db, "", tracks, artists, lf=lf, tuning=taste.Tuning())
+    assert "desert band" not in plain.artist_score and "synth a" in plain.artist_score
+    steered = recommend(db, "", tracks, artists, lf=lf, tuning=taste.Tuning(more=["Kyuss"], less=["Synth A"]))
+    assert steered.artist_score["desert band"] > 0 and "Kyuss" in steered.seeds
+    assert "synth a" not in steered.artist_score  # less like: left out, and its neighbourhood pulled down
+
+
+def test_graph_page_lists_your_artists_and_where_they_lead(tmp_path):
+    from swimscrobble import graphview
+
+    t = taste.Taste(artist_score={"new band": 0.6, "old band": 0.4}, seeds={"Depeche Mode": 2.0},
+                    why={"new band": ["Depeche Mode"]}, names={"new band": "New Band"}, known={"old band"})
+    data = graphview.graph_data(t, owned={"old band"})
+    kinds = {n["id"]: (n["kind"], n["owned"]) for n in data["nodes"]}
+    assert kinds == {"depeche mode": ("seed", False), "new band": ("new", False), "old band": ("fresh", True)}
+    assert data["links"] == [{"source": "depeche mode", "target": "new band", "strength": 1.0}]
+    page = graphview.write(t, path=tmp_path / "g.html").read_text()
+    assert "New Band" in page and "d3/7.8.5" in page and "__DATA__" not in page
+
+
+def test_terminal_graph_connects_you_your_artists_and_their_picks():
+    from swimscrobble import tgraph
+
+    t = taste.Taste(artist_score={"pick a": 0.9, "pick b": 0.5, "far": 0.4}, seeds={"Seed One": 2.0, "Seed Two": 1.0},
+                    why={"pick a": ["Seed One", "Seed Two"], "pick b": ["Seed Two"], "far": ["Somebody Else"]},
+                    names={"pick a": "Pick A", "pick b": "Pick B"}, known={"pick b"})
+    nodes, edges = tgraph.build(t, owned={"pick a"})
+    assert [n.label for n in nodes] == ["you", "Seed One", "Seed Two", "Pick A", "Pick B"]  # "far": no seed of yours
+    assert (1, 3, 1.0) in edges and (2, 3, 0.5) in edges and (0, 1, 1.0) in edges  # the second path, dotted
+    tgraph.layout(nodes, edges, 80, 24)
+    assert all(0 <= n.x < 80 and 0 <= n.y < 24 for n in nodes)
+    rows = tgraph.render(nodes, edges, 80, 24, selected=3)
+    screen = "\n".join(r.plain for r in rows)
+    assert "Pick A ♪" in screen and "Seed Two" in screen and len(rows) == 24
+    # two seeds sit straight above and below you: arrows go to the nearest node that way, or nowhere
+    assert tgraph.step(nodes, 0, "up") == 1 and tgraph.step(nodes, 0, "down") == 2 and tgraph.step(nodes, 0, "left") == 0

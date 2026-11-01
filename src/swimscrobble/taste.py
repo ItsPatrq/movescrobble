@@ -22,7 +22,7 @@ import time
 import urllib.parse
 from collections import Counter, defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 import numpy as np
 
@@ -52,6 +52,13 @@ KNOWN_PLAYS = 3  # below this many plays an artist is still a discovery
 NO_GENRE_FIT = 0.25  # an artist Last.fm has no genres for is usually obscure or not music: a weak fit
 TALK_TITLES = 32  # a title longer than this (or that looks like an episode) sounds like talk, not a song
 NOT_MUSIC_TAGS = {"podcast", "podcasts", "audiobook", "audiobooks", "talk", "news", "comedy", "radio show"}
+# the knobs the TUI's Discover screen turns: name -> (question, [(answer, value)]); the middle answer is the default
+KNOBS = {
+    "reach": ("How far from your artists", [("close relatives", 0.5), ("balanced", RESTART), ("far afield", 0.15)]),
+    "genre": ("How much genre matters", [("a little", 0.7), ("balanced", GENRE_FLOOR), ("a lot", 0.1)]),
+    "spread": ("Spread picks over your artists", [("no", 1.0), ("balanced", SPREAD), ("strongly", 0.45)]),
+    "memory": ("Start from what you played", [("this month", 0.0), ("balanced", 0.3), ("the last months", 1.0)]),
+}
 GENERIC_TAGS = {
     "seen live", "favorites", "favourites", "favourite", "albums i own", "male vocalists",
     "female vocalists", "under 2000 listeners", "all", "good", "awesome", "love", "my music", "beautiful",
@@ -148,7 +155,7 @@ class Graph:
     def degree(self) -> np.ndarray:
         return np.bincount(np.array(self.src, dtype=int), minlength=len(self.ids)).astype(float)
 
-    def walk(self, restart: dict[str, float]) -> np.ndarray:
+    def walk(self, restart: dict[str, float], restart_p: float = RESTART) -> np.ndarray:
         """Personalised PageRank: where a walker that keeps jumping back to `restart` spends its time."""
         n = len(self.ids)
         s = np.zeros(n)
@@ -164,7 +171,7 @@ class Graph:
         r = s.copy()
         for _ in range(STEPS):
             spread = np.bincount(dst, r[src] * share, minlength=n)
-            r = RESTART * s + (1 - RESTART) * (spread + r[out == 0].sum() * s)  # dead ends jump back too
+            r = restart_p * s + (1 - restart_p) * (spread + r[out == 0].sum() * s)  # dead ends jump back too
         return r
 
 
@@ -176,6 +183,13 @@ class Taste:
     artist_score: dict[str, float] = field(default_factory=dict)  # norm(artist) -> 0..1 how likely you enjoy them
     recs: list[tuple[str, str, float]] = field(default_factory=list)  # tracks to try (owned or not), best first
     why: dict[str, list[str]] = field(default_factory=dict)  # norm(artist) -> your artists that lead to it
+    seeds: dict[str, float] = field(default_factory=dict)  # your artists the walk started from -> weight
+    names: dict[str, str] = field(default_factory=dict)  # norm(artist) -> how Last.fm spells it
+    known: set[str] = field(default_factory=set)  # norm(artist) you have played KNOWN_PLAYS+ times
+    played: set[tuple[str, str]] = field(default_factory=set)  # (norm artist, norm title) you have ever played
+
+    def name(self, artist: str) -> str:
+        return self.names.get(artist, artist)
 
     @functools.cached_property
     def _rec_score(self) -> dict[tuple[str, str], float]:
@@ -186,13 +200,54 @@ class Taste:
         return max(self._rec_score.get((norm(artist), norm(title)), 0.0), self.artist_score.get(norm(artist), 0.0))
 
 
-def seed_weights(tracks: dict, artists: dict, n: int = SEED_ARTISTS) -> dict[str, float]:
+@dataclass
+class Tuning:
+    """Your adjustments, kept in the database: one answer per KNOBS entry (index into its answers), plus artists
+    to steer towards (they join the walk's start) or away from (they join the dislikes)."""
+
+    reach: int = 1
+    genre: int = 1
+    spread: int = 1
+    memory: int = 1
+    more: list[str] = field(default_factory=list)
+    less: list[str] = field(default_factory=list)
+
+    def value(self, knob: str) -> float:
+        return KNOBS[knob][1][getattr(self, knob)][1]
+
+    def answer(self, knob: str) -> str:
+        return KNOBS[knob][1][getattr(self, knob)][0]
+
+    def turn(self, knob: str, step: int) -> None:
+        setattr(self, knob, max(0, min(len(KNOBS[knob][1]) - 1, getattr(self, knob) + step)))
+
+    def steer(self, artist: str, more: bool) -> None:
+        """More (or less) like this artist; asking for the opposite of an earlier wish replaces it."""
+        self.more = [a for a in self.more if norm(a) != norm(artist)]
+        self.less = [a for a in self.less if norm(a) != norm(artist)]
+        (self.more if more else self.less).append(artist)
+
+    @classmethod
+    def load(cls, db) -> Tuning:
+        from .history import get_meta
+
+        raw = json.loads(get_meta(db, "taste_tuning") or "{}")
+        return cls(**{f.name: raw[f.name] for f in fields(cls) if f.name in raw})
+
+    def save(self, db) -> None:
+        from .history import set_meta
+
+        set_meta(db, "taste_tuning", json.dumps(asdict(self)))
+        db.commit()
+
+
+def seed_weights(tracks: dict, artists: dict, n: int = SEED_ARTISTS, long_term: float = 0.3) -> dict[str, float]:
     """Artist -> restart weight: this month's plays (30-day half-life) count most, the last few months less."""
     w: dict[str, float] = defaultdict(float)
     for (a, _), aff in tracks.items():
         w[a] += aff.now
     for a, aff in artists.items():
-        w[a] += 0.3 * aff.now
+        w[a] += long_term * aff.now
     best = sorted(((a, v) for a, v in w.items() if v > 0.5), key=lambda kv: -kv[1])[:n]
     return {a: math.log1p(v) for a, v in best}
 
@@ -231,14 +286,15 @@ def _scaled(x: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return x / top if top > 0 else np.zeros_like(x)
 
 
-def diversified(ranked: list[str], scores: dict[str, float], owner: dict[str, str], n: int) -> dict[str, float]:
+def diversified(ranked: list[str], scores: dict[str, float], owner: dict[str, str], n: int,
+                spread: float = SPREAD) -> dict[str, float]:
     """Pick `n` artists, best first, but each further one led to by the same artist of yours is worth SPREAD times
     less: one tight cluster (artists who all list each other) must not take every slot. Returns pick -> the
     discounted score, used for its tracks."""
     pool, used, out = list(ranked[: n * 5]), Counter(), {}
     while pool and len(out) < n:
-        best = max(pool, key=lambda a: scores[a] * SPREAD ** used[owner[a]])
-        out[best] = scores[best] * SPREAD ** used[owner[best]]
+        best = max(pool, key=lambda a: scores[a] * spread ** used[owner[a]])
+        out[best] = scores[best] * spread ** used[owner[best]]
         used[owner[best]] += 1
         pool.remove(best)
     return out
@@ -252,11 +308,15 @@ def recommend(
     library_artists: list[str] = (),
     lf: Lastfm | None = None,
     progress: Progress = lambda _: None,
+    tuning: Tuning | None = None,
 ) -> Taste:
-    """Build and walk the taste graph. `tracks` / `artists` are affinity.compute's output (your history)."""
+    """Build and walk the taste graph. `tracks` / `artists` are affinity.compute's output (your history);
+    `tuning` defaults to the adjustments saved from the Discover screen."""
     from .buckets import looks_like_song
 
     lf = lf or Lastfm(db)
+    tuning = tuning or Tuning.load(db)
+    reach, genre_floor = tuning.value("reach"), tuning.value("genre")
     g = Graph()
     names: dict[str, str] = {}  # norm(artist) -> a display spelling
 
@@ -278,13 +338,17 @@ def recommend(
     for a, t in tracks:
         titles[a].append(t)
     talk: set[str] = set()
-    pre = seed_weights(tracks, artists, 2 * SEED_ARTISTS)
+    pre = seed_weights(tracks, artists, 2 * SEED_ARTISTS, tuning.value("memory"))
     for i, a in enumerate(pre, 1):
         progress(f"taste graph: your artists' genres {i}/{len(pre)}")
         if spoken(titles[a], tags(art(a))):
             talk.add(a)
     seed = {a: w for a, w in pre.items() if a not in talk}
     seed = dict(list(seed.items())[:SEED_ARTISTS])
+    steer = {norm(a) for a in tuning.more}
+    seed = {a: w for a, w in seed.items() if norm(a) not in steer}
+    for a in tuning.more:  # "more like this": a seed as strong as your favourite
+        seed[a] = max(seed.values(), default=1.0)
     restart = {art(a): w for a, w in seed.items()}
     led_by: dict[str, Counter] = defaultdict(Counter)  # who brought each artist in, for `why`
     for i, (a, w) in enumerate(seed.items(), 1):
@@ -306,7 +370,7 @@ def recommend(
             led_by[norm(b)][a] += 0.5 * m
 
     # genres: for your artists, your library's, and the best candidates of a first walk without them
-    first = g.walk(restart)
+    first = g.walk(restart, reach)
     seeds = [n for n in restart if n.startswith("a:")]
     cands = sorted((n for n in g.ids if n.startswith("a:") and n not in restart), key=lambda n: -first[g.ids[n]])
     tagged = list(dict.fromkeys([*seeds, *(art(a) for a in library_artists), *cands[:TAG_ARTISTS]]))
@@ -323,7 +387,9 @@ def recommend(
             g.link(n, "g:" + t, W_TAG * c * idf[t] / top_idf)
 
     neg = {art(a): v for a, v in dislikes(db).items()}
-    pos_r, neg_r = g.walk(restart), g.walk(neg)
+    for a in tuning.less:  # "less like this": its whole neighbourhood is pulled down, the artist itself left out
+        neg[art(a)] = neg.get(art(a), 0.0) + 1.0
+    pos_r, neg_r = g.walk(restart, reach), g.walk(neg, reach)
     # scaled against the candidates, not your own artists (who get the restart mass): a top discovery reaches 1
     cand = np.array([n.startswith("a:") and n not in restart for n in g.ids])
     damp = np.maximum(g.degree(), 1.0) ** DEGREE_DAMP
@@ -348,9 +414,9 @@ def recommend(
         if n.startswith("a:"):
             fit = genre_fit(n)
             fit = NO_GENRE_FIT if fit is None else min(1.0, fit / 0.6)  # 0.6 cosine is already a close genre match
-            scores[n[2:]] = float(graph[i]) ** 0.5 * (GENRE_FLOOR + (1 - GENRE_FLOOR) * fit)
+            scores[n[2:]] = float(graph[i]) ** 0.5 * (genre_floor + (1 - genre_floor) * fit)
     banned = [r["artist"] for r in db.execute("SELECT artist FROM blocked WHERE title=''")]
-    for a in [*banned, *talk]:  # never recommend an artist you blocked (or talk), however close it sits
+    for a in [*banned, *talk, *tuning.less]:  # never recommend an artist you blocked (or talk), however close it sits
         scores.pop(norm(a), None)
 
     # tracks to try
@@ -360,8 +426,9 @@ def recommend(
         plays_of[norm(a)] += aff.total
     ranked = sorted(scores, key=lambda a: -scores[a])
     owner = {a: led_by[a].most_common(1)[0][0] if led_by.get(a) else a for a in ranked}
-    new_artists = diversified([a for a in ranked if plays_of[a] < KNOWN_PLAYS], scores, owner, TRY_ARTISTS)
-    known = diversified([a for a in ranked if plays_of[a] >= KNOWN_PLAYS], scores, owner, TRY_KNOWN)
+    spread = tuning.value("spread")
+    new_artists = diversified([a for a in ranked if plays_of[a] < KNOWN_PLAYS], scores, owner, TRY_ARTISTS, spread)
+    known = diversified([a for a in ranked if plays_of[a] >= KNOWN_PLAYS], scores, owner, TRY_KNOWN, spread)
     picks = {**new_artists, **known}
     recs: dict[tuple[str, str], tuple[str, str, float]] = {}
 
@@ -380,4 +447,5 @@ def recommend(
 
     why = {a: [s for s, _ in led_by[a].most_common(2)] for a in ranked[:300] if led_by.get(a)}
     return Taste(loved=lf.loved(user) if user else [], artist_score=scores,
-                 recs=sorted(recs.values(), key=lambda r: -r[2]), why=why)
+                 recs=sorted(recs.values(), key=lambda r: -r[2]), why=why, seeds=seed, names=names,
+                 known={a for a, n in plays_of.items() if n >= KNOWN_PLAYS}, played=played)

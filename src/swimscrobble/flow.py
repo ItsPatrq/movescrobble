@@ -11,8 +11,8 @@ import itertools
 import json
 import os
 import shutil
-from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -183,7 +183,7 @@ def stage_plan(plan: list[PlannedTrack], dest: Path, prepare: Callable[[Path], P
     progress(f"levelling tracks 0/{len(plan)}")
     with ThreadPoolExecutor(max_workers=max((os.cpu_count() or 2) // 2, 1)) as pool:
         sources = list(pool.map(prep, plan))
-    for i, (p, src) in enumerate(zip(plan, sources), 1):
+    for i, (p, src) in enumerate(zip(plan, sources, strict=True), 1):
         progress(f"copying to the headphones {i}/{len(plan)}")
         shutil.copy2(src, dest / p.staged_name)
     audio.prune()

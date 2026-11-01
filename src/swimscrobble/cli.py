@@ -13,10 +13,10 @@ from pathlib import Path
 from . import config as cfgmod
 from . import history
 from .library import scan_config
-from .workouts import WORKOUTS
 from .planner import fmt_min, parse_positions, plan_session, total_seconds
 from .scrobble import build_scrobbles, confirm, to_csv
 from .session import played_part, to_manifest
+from .workouts import WORKOUTS
 
 
 def notify(msg: str) -> None:
@@ -134,9 +134,9 @@ def cmd_recap(a) -> None:
 
 def cmd_recs(a) -> None:
     """What the taste graph would bring next, and which of your artists lead there."""
-    from . import affinity, taste
     from rich.console import Console
 
+    from . import affinity, taste
     from .matcher import norm
     from .ui import Busy
 
@@ -287,7 +287,8 @@ def cmd_mix(a) -> None:
     elif db.execute("SELECT 1 FROM pool WHERE retired=0 AND source IN ('top','loved','playlist','similar') LIMIT 1").fetchone():
         print("! the pool was built by an older version: run `swimscrobble sync` to rebuild it.\n")
     for p in plan:
-        print(f"{p.position:03d}  {fmt_min(p.track.duration)}  e={p.energy:.2f}  {p.source:9}  {p.track.artist} - {p.track.title}")
+        print(f"{p.position:03d}  {fmt_min(p.track.duration)}  e={p.energy:.2f}  {p.source:9}  "
+              f"{p.track.artist} - {p.track.title}")
     mixes = Counter(p.source for p in plan)
     print(f"\n{len(plan)} tracks, {fmt_min(total_seconds(plan))}  " + "  ".join(f"{b}={n}" for b, n in mixes.most_common()))
     Path(a.out).write_text(json.dumps(to_manifest(plan, a.seed, swim), indent=2, ensure_ascii=False))

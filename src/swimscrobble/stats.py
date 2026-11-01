@@ -212,7 +212,8 @@ def garmin_recap(db, r: Recap, now: float, trend: int = 6) -> None:
     timed = [(s["avg_hr"], s["moving_s"] or s["elapsed_s"]) for s in recent if s["avg_hr"]]
     if timed:
         r.avg_hr = sum(h * t for h, t in timed) / sum(t for _, t in timed)
-    zones = [sum(z) for z in zip(*(json.loads(s["hr_zones"]) for s in recent if s["hr_zones"] not in (None, "[]")))]
+    rows = [json.loads(s["hr_zones"]) for s in recent if s["hr_zones"] not in (None, "[]")]
+    zones = [sum(z) for z in zip(*rows, strict=False)]  # a swim with fewer zones just adds to the first ones
     if sum(zones):
         r.hr_zones = [z / sum(zones) for z in zones]
     r.fastest, r.slowest = power.leaderboard(db)

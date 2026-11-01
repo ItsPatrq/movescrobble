@@ -98,7 +98,8 @@ def test_old_cache_entries_are_pruned(tmp_path):
 def test_podcast_filter():
     assert audio.podcast_filter(1.0, False) is None
     assert audio.podcast_filter(1.3, False) == "atempo=1.30"
-    assert audio.podcast_filter(1.3, True).startswith("silenceremove=") and audio.podcast_filter(1.3, True).endswith("atempo=1.30")
+    trimmed = audio.podcast_filter(1.3, True)
+    assert trimmed.startswith("silenceremove=") and trimmed.endswith("atempo=1.30")
 
 
 @pytest.mark.ffmpeg
@@ -178,7 +179,8 @@ def test_buffer_tracks_are_dropped_until_the_playlist_fits(tmp_path, monkeypatch
     kept = flow.fit_to_space(plan, cfg)  # 80 MB usable: 7 tracks (11 MB each)
     assert len(kept) == 7
     with pytest.raises(RuntimeError, match="not enough space"):
-        flow.fit_to_space(plan, SimpleNamespace(stage_path=tmp_path, minutes=45, space_reserve_mb=200))  # the swim itself does not fit
+        # the swim itself does not fit
+        flow.fit_to_space(plan, SimpleNamespace(stage_path=tmp_path, minutes=45, space_reserve_mb=200))
 
 
 def test_podcasts_leave_room_for_the_playlist(tmp_path, monkeypatch):
@@ -230,7 +232,7 @@ def test_workout_shapes():
 
     lo, mid, hi = 0.5, 0.7, 0.9
     iv = [WORKOUTS["intervals"].target(p / 100, lo, mid, hi) for p in range(15, 90)]
-    assert {round(x, 2) for x in iv} == {lo, hi} and sum(a != b for a, b in zip(iv, iv[1:])) >= 4
+    assert {round(x, 2) for x in iv} == {lo, hi} and sum(a != b for a, b in zip(iv, iv[1:], strict=False)) >= 4
     assert WORKOUTS["pyramid"].target(0.5, lo, mid, hi) == hi and WORKOUTS["pyramid"].target(0.0, lo, mid, hi) == lo
     assert max(WORKOUTS["easy"].target(p / 10, lo, mid, hi) for p in range(10)) < mid
 
@@ -378,7 +380,8 @@ def _scrobbled_session(db, start):
     manifest = {"tracks": [{"position": 1, "artist": "A", "title": "fast", "duration": 400},
                            {"position": 2, "artist": "B", "title": "slow", "duration": 400}]}
     sid = history.add_session(db, manifest, 60, None, "x", at=(start - timedelta(hours=3)).timestamp())
-    history.mark_scrobbled(db, sid, [("A", "fast", start.timestamp()), ("B", "slow", (start + timedelta(seconds=400)).timestamp())])
+    history.mark_scrobbled(db, sid, [("A", "fast", start.timestamp()),
+                                     ("B", "slow", (start + timedelta(seconds=400)).timestamp())])
     return sid
 
 

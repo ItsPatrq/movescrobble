@@ -116,6 +116,23 @@ def balanced(wishes: list, weights: dict[str, float] | None) -> list:
     return out
 
 
+def preview_command(cfg, video_id: str, output: str, start: int, end: int) -> list[str]:
+    """The configured download command, cut down to an mp3 of seconds start..end (no tags, no cover art)."""
+    cmd = playlist_download_command(cfg, f"https://music.youtube.com/watch?v={video_id}", output=output)
+    url = cmd.pop()
+    out, skip = [], False
+    for part in cmd:
+        if skip:
+            skip = False
+        elif part == "--parse-metadata":
+            skip = True  # and its argument
+        elif part not in ("--embed-metadata", "--embed-thumbnail"):
+            out.append(part)
+    if "-x" not in out and "--extract-audio" not in out:  # the player needs mp3, not a video container
+        out += ["--extract-audio", "--audio-format", "mp3"]
+    return [*out, "--download-sections", f"*{start}-{end}", "--no-playlist", url]
+
+
 def download_video(cfg, video_id: str, run: Callable = quiet_run) -> bool:
     """Download one YouTube Music song into the library folder with the configured command."""
     out = str(cfg.music_path / "%(album|Singles)s" / "%(artist,channel)s - %(title)s.%(ext)s")

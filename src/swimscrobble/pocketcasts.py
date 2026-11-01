@@ -163,7 +163,7 @@ def sync_queue(
     dest: Path,
     db,
     max_episodes: int = 10,
-    fetcher: Fetcher | Downloader = Fetcher(),
+    fetcher: Fetcher | Downloader | None = None,
     reserve_mb: float = 0,
     workers: int = 3,
     progress: Progress = _quiet,
@@ -174,7 +174,7 @@ def sync_queue(
     the device is written to once per file and never read back. An episode that would leave less than `reserve_mb`
     free (room for the next playlist) is skipped; newest come first, so the oldest are the ones left out.
     """
-    fetcher = fetcher if isinstance(fetcher, Fetcher) else Fetcher(fetcher)
+    fetcher = fetcher if isinstance(fetcher, Fetcher) else Fetcher(fetcher) if fetcher else Fetcher()
     dest.mkdir(parents=True, exist_ok=True)
     want = {e["uuid"]: (filename_for(i + 1, e, fetcher.ext), e) for i, e in enumerate(episodes[:max_episodes])}
     have = {r["uuid"]: (r["filename"], r["variant"]) for r in db.execute("SELECT uuid, filename, variant FROM podcasts")}
@@ -219,7 +219,7 @@ def sync_queue(
             progress(f"podcasts: fetching 0/{len(todo)}")
         with ThreadPoolExecutor(max_workers=workers) as pool:  # network + ffmpeg bound, independent
             errors = list(pool.map(fetch, todo))
-        for i, ((uuid, name, ep), err) in enumerate(zip(todo, errors), 1):
+        for i, ((_uuid, name, _ep), err) in enumerate(zip(todo, errors, strict=True), 1):
             if err:
                 report.failed.append(f"{name}: {err}")
                 continue
