@@ -1,7 +1,13 @@
+import io
 import json
+import os
+import shutil
 import sqlite3
 import subprocess
+import tempfile
+import time
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -478,3 +484,122 @@ def test_timing_uncertainty_spreads_lengths_near_a_track_change():
     assert [e.lengths for e in sharp] == [15, 15]
     assert sum(e.lengths for e in spread) < 30  # some lengths may fall outside the playlist (before it started)
     assert all(e.lengths != 15 for e in spread)
+
+
+def _episodes(n):
+    return [{"uuid": f"u{i}", "title": f"Ep {i}", "url": f"https://x/{i}.mp3"} for i in range(n)]
+
+
+def test_podcast_scratch_files_are_deleted_as_they_are_copied(tmp_path, monkeypatch):
+    db = history.connect(tmp_path / "h.db")
+    scratch, real_copy, copied = tmp_path / "scratch", shutil.copyfile, []
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+
+    def copy(src, dst):
+        assert not {p.name for p in Path(src).parent.iterdir()} & set(copied)  # earlier episodes are gone already
+        copied.append(Path(src).name)
+        return real_copy(src, dst)
+    monkeypatch.setattr(pocketcasts.shutil, "copyfile", copy)
+    rep = pocketcasts.sync_queue(_episodes(3), tmp_path / "dev", db, fetcher=lambda u, d: d.write_bytes(b"x"))
+    assert len(rep.downloaded) == len(copied) == 3 and rep.on_device == 3
+    assert list(scratch.iterdir()) == []
+
+
+def test_podcast_scratch_is_removed_when_the_device_goes_away(tmp_path, monkeypatch):
+    db = history.connect(tmp_path / "h.db")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+
+    def gone(_src, _dst):
+        raise OSError("device unplugged")
+    monkeypatch.setattr(pocketcasts.shutil, "copyfile", gone)
+    with pytest.raises(OSError):
+        pocketcasts.sync_queue(_episodes(2), tmp_path / "dev", db, fetcher=lambda u, d: d.write_bytes(b"x"))
+    assert list(scratch.iterdir()) == []
+
+
+def test_podcast_sync_sweeps_scratch_left_by_a_killed_run_but_not_a_running_one(tmp_path, monkeypatch):
+    db = history.connect(tmp_path / "h.db")
+    scratch = tmp_path / "scratch"
+    monkeypatch.setattr(tempfile, "tempdir", str(scratch))
+    stale, running, other = (scratch / f"{n}x" for n in (pocketcasts.SCRATCH_PREFIX, pocketcasts.SCRATCH_PREFIX + "2", "other"))
+    for d in (stale, running, other):
+        d.mkdir(parents=True)
+        (d / "ep.mp3").write_bytes(b"x")
+    long_ago = time.time() - pocketcasts.STALE_SCRATCH_S - 60
+    os.utime(stale, (long_ago, long_ago))
+    os.utime(other, (long_ago, long_ago))
+    pocketcasts.sync_queue([], tmp_path / "dev", db)
+    assert not stale.exists() and running.exists() and other.exists()
+
+
+def test_http_download_leaves_no_partial_file_on_failure(tmp_path, monkeypatch):
+    def broken(*_a, **_k):
+        raise OSError("connection reset")
+
+    class Response(io.BytesIO):
+        read = broken
+    monkeypatch.setattr(pocketcasts, "open_url", lambda *_a, **_k: Response())
+    with pytest.raises(OSError):
+        pocketcasts.http_download("https://x/1.mp3", tmp_path / "1.mp3")
+    assert list(tmp_path.iterdir()) == []
+
+
+def _podcasts_cli(tmp_path, monkeypatch):
+    from swimscrobble import cli, config
+    seen, db = [], history.connect(tmp_path / "h.db")
+    monkeypatch.setattr(config, "load", lambda: config.Config(volumes_dir=str(tmp_path)))
+    monkeypatch.setattr(history, "connect", lambda: db)
+    monkeypatch.setattr(pocketcasts, "sync_latest", lambda dest, *_a, **_k: seen.append(dest) or "ok")
+    return cli, seen
+
+
+def test_podcasts_command_targets_the_headphones_not_a_local_folder(tmp_path, monkeypatch):
+    from swimscrobble.config import Config
+    cli, seen = _podcasts_cli(tmp_path, monkeypatch)
+    cfg = Config(volumes_dir=str(tmp_path))
+    cfg.device_path.mkdir(parents=True)
+    cli.cmd_podcasts(SimpleNamespace(dest=None, done=None))
+    assert seen == [cfg.device_path / cfg.device_podcast_subdir]
+
+
+def test_podcasts_command_refuses_without_the_headphones(tmp_path, monkeypatch):
+    cli, seen = _podcasts_cli(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match="not connected"):
+        cli.cmd_podcasts(SimpleNamespace(dest=None, done=None))
+    assert seen == []
+
+
+def test_podcasts_command_honours_an_explicit_dest(tmp_path, monkeypatch):
+    cli, seen = _podcasts_cli(tmp_path, monkeypatch)
+    cli.cmd_podcasts(SimpleNamespace(dest=str(tmp_path / "keep"), done=None))
+    assert seen == [tmp_path / "keep"]
+
+
+def test_interrupted_copy_leaves_no_episode_that_looks_complete_and_is_refetched(tmp_path, monkeypatch):
+    db = history.connect(tmp_path / "h.db")
+    dev, real_copy = tmp_path / "dev", shutil.copyfile
+    fetch = lambda u, d: d.write_bytes(b"whole episode")  # noqa: E731
+
+    def cut_short(_src, dst):
+        Path(dst).write_bytes(b"who")
+        raise OSError("device unplugged")
+    monkeypatch.setattr(pocketcasts.shutil, "copyfile", cut_short)
+    with pytest.raises(OSError):
+        pocketcasts.sync_queue(_episodes(1), dev, db, fetcher=fetch)
+    assert list(dev.iterdir()) == []
+
+    monkeypatch.setattr(pocketcasts.shutil, "copyfile", real_copy)
+    rep = pocketcasts.sync_queue(_episodes(1), dev, db, fetcher=fetch)
+    assert rep.downloaded == ["01 - Ep 0.mp3"] and (dev / "01 - Ep 0.mp3").read_bytes() == b"whole episode"
+
+
+def test_podcast_sync_clears_partial_copies_left_by_a_killed_run(tmp_path):
+    db = history.connect(tmp_path / "h.db")
+    dev = tmp_path / "dev"
+    dev.mkdir()
+    (dev / "01 - Ep 0.mp3.part").write_bytes(b"who")
+    pocketcasts.sync_queue(_episodes(1), dev, db, fetcher=lambda u, d: d.write_bytes(b"x"))
+    assert [p.name for p in dev.iterdir()] == ["01 - Ep 0.mp3"]

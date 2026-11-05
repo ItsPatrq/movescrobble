@@ -164,7 +164,7 @@ no_repeat_days = 7
 | `lastfm-auth` | one-time Last.fm authorisation (`LASTFM_API_KEY`/`LASTFM_API_SECRET`) |
 | `playlist [url] [--download]` | list which playlist tracks exist under `music_dir`; `--download` fetches the missing ones |
 | `sync [--download [--yes]] [--fetch-missing N]` | refresh the swim pool: your Last.fm history and the taste graph, plus the playlist; optionally offer to download N wanted tracks you don't have yet |
-| `podcasts [--done 1,3]` | mark finished episodes played, then mirror newest unplayed episode per Pocket Casts subscription (`POCKETCASTS_EMAIL`/`POCKETCASTS_PASSWORD`) |
+| `podcasts [--done 1,3] [--dest DIR]` | mark finished episodes played, then mirror newest unplayed episode per Pocket Casts subscription to the headphones, or to `DIR` (`POCKETCASTS_EMAIL`/`POCKETCASTS_PASSWORD`). Episodes are not kept on the computer: each scratch file is deleted once copied |
 | `on-connect` | the automatic flow (settle previous session, podcasts, plan + stage next) |
 | `agent install` | launchd agent that runs `on-connect` when volumes change |
 

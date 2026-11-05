@@ -387,13 +387,17 @@ def cmd_podcasts(a) -> None:
 
     cfg = cfgmod.load()
     db = history.connect()
-    dest = Path(a.dest) if a.dest else cfg.podcast_path
     if a.done:
         done = [e for i, e in enumerate(pocketcasts.on_device(db), 1) if i in parse_positions(a.done)]
         pocketcasts.mark_played(done)
         print(pocketcasts.describe_marked(done))
-    print(pocketcasts.sync_latest(dest, db, cfg.max_podcasts, speed=cfg.podcast_speed,
-                                  trim_silence=cfg.podcast_trim_silence))
+    if a.dest:
+        print(pocketcasts.sync_latest(Path(a.dest), db, cfg.max_podcasts, speed=cfg.podcast_speed,
+                                      trim_silence=cfg.podcast_trim_silence))
+    elif cfg.device_path.is_dir():
+        print(podcast_sync(cfg, db, only_if_logged_in=False)())
+    else:  # episodes only live on the headphones: no local copy to fall back to
+        raise SystemExit(f"device {cfg.device_name} not connected (or pass --dest)")
 
 
 def podcast_sync(cfg, db, only_if_logged_in: bool = True, progress=None):
@@ -543,7 +547,7 @@ def main(argv=None) -> None:
     sy.set_defaults(func=cmd_sync)
 
     po = sub.add_parser("podcasts", help="mirror the newest unplayed episode of each Pocket Casts subscription")
-    po.add_argument("--dest")
+    po.add_argument("--dest", help="folder to mirror to instead of the headphones (episodes stay there)")
     po.add_argument("--done", metavar="1,3", help="mark these episodes (number on the headphones) played first")
     po.set_defaults(func=cmd_podcasts)
 
