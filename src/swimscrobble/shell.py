@@ -1185,7 +1185,7 @@ class _Discover:
 def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Actions:
     """The production wiring: the same functions the command line uses. `progress` receives step updates from
     the long ones (the shell's spinner)."""
-    from . import acquire, cli, garmin, lastfm, launchd, pocketcasts, ytm
+    from . import acquire, canonical, cli, garmin, lastfm, launchd, pocketcasts, ytm
     from .energy import cached_features
     from .library import scan_config
 
@@ -1200,8 +1200,9 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
 
     def love(tracks: list[tuple[str, str]]) -> str:
         sk = lastfm.load_session_key()
+        page = canonical.Resolver(db)  # the same page the scrobbles went to
         for a, t in tracks:
-            lastfm.love(a, t, sk)
+            lastfm.love(*page(a, t), sk)
         msg = f"loved {len(tracks)} on Last.fm"
         if cfg.ytm_auth_path and cfg.playlists:
             ids = [e.video_id for a, t in tracks if (e := acquire.find_song(a, t))]
@@ -1220,7 +1221,7 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
                                podcast_sync=cli.podcast_sync(cfg, db, progress=progress))
 
     def submit(scrobbles: list) -> str:
-        return flow.describe_sent(flow.send_scrobbles(scrobbles, cfg), scrobbles, cfg)
+        return flow.describe_sent(flow.send_scrobbles(db, scrobbles, cfg), scrobbles, cfg)
 
     def recommend():
         from . import affinity

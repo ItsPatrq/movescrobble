@@ -54,7 +54,7 @@ def _deliver(scrobbles, a, cfg) -> bool:
         from . import flow
 
         try:
-            n = flow.send_scrobbles(scrobbles, cfg, listenbrainz_too=a.listenbrainz)
+            n = flow.send_scrobbles(history.connect(), scrobbles, cfg, listenbrainz_too=a.listenbrainz)
         except ValueError as e:
             raise SystemExit(f"{e}; fix --start") from None
         print(flow.describe_sent(n, scrobbles, cfg, a.listenbrainz))
