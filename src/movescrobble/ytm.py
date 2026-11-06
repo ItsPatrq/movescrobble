@@ -39,7 +39,7 @@ def playlist_id(url: str) -> str:
 
 
 def add_to_playlist(auth_file, playlist_url: str, video_ids: list[str]) -> None:
-    """Needs browser auth (`swimscrobble ytm-auth`); reading playlists does not."""
+    """Needs browser auth (`movescrobble ytm-auth`); reading playlists does not."""
     from ytmusicapi import YTMusic
 
     YTMusic(str(auth_file)).add_playlist_items(playlist_id(playlist_url), video_ids, duplicates=False)

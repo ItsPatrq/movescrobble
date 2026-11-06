@@ -62,7 +62,7 @@ def authenticate(transport: Transport = http_post, wait: Callable[[str], None] =
 def load_session_key() -> str:
     saved = read_json(SESSION_FILE)
     if not saved:
-        raise SystemExit("not authenticated; run: swimscrobble lastfm-auth")
+        raise SystemExit("not authenticated; run: movescrobble lastfm-auth")
     return saved["session_key"]
 
 

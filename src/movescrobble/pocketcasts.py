@@ -22,7 +22,7 @@ from .net import open_url, request_json
 
 API = "https://api.pocketcasts.com"
 TOKEN_FILE = "pocketcasts.json"
-SCRATCH_PREFIX = "swimscrobble-podcasts-"
+SCRATCH_PREFIX = "movescrobble-podcasts-"
 STALE_SCRATCH_S = 24 * 3600
 
 Transport = Callable[[str, dict, str | None], dict]  # (path, body, token) -> json

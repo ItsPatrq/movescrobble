@@ -29,7 +29,7 @@ def build_payload(scrobbles: list[Scrobble]) -> dict:
                     "artist_name": s.artist,
                     "track_name": s.title,
                     **({"release_name": s.album} if s.album else {}),
-                    "additional_info": {"duration": s.duration, "submission_client": "swimscrobble"},
+                    "additional_info": {"duration": s.duration, "submission_client": "movescrobble"},
                 },
             }
             for s in scrobbles

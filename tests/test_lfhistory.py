@@ -1,6 +1,6 @@
 import pytest
 
-from swimscrobble import history, lfhistory
+from movescrobble import history, lfhistory
 
 NOW = 100 * 86400
 DAY = 86400

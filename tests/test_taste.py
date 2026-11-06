@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from swimscrobble import history, taste
-from swimscrobble.affinity import Aff, ArtistAff
-from swimscrobble.taste import Graph, Lastfm, diversified, recommend, spoken
+from movescrobble import history, taste
+from movescrobble.affinity import Aff, ArtistAff
+from movescrobble.taste import Graph, Lastfm, diversified, recommend, spoken
 
 DAY = 86400
 NOW = 4000 * DAY
@@ -158,7 +158,7 @@ def test_more_and_less_like_steer_the_walk(db):
 
 
 def test_graph_page_lists_your_artists_and_where_they_lead(tmp_path):
-    from swimscrobble import graphview
+    from movescrobble import graphview
 
     t = taste.Taste(artist_score={"new band": 0.6, "old band": 0.4}, seeds={"Depeche Mode": 2.0},
                     why={"new band": ["Depeche Mode"]}, names={"new band": "New Band"}, known={"old band"})
@@ -171,7 +171,7 @@ def test_graph_page_lists_your_artists_and_where_they_lead(tmp_path):
 
 
 def test_terminal_graph_connects_you_your_artists_and_their_picks():
-    from swimscrobble import tgraph
+    from movescrobble import tgraph
 
     t = taste.Taste(artist_score={"pick a": 0.9, "pick b": 0.5, "far": 0.4}, seeds={"Seed One": 2.0, "Seed Two": 1.0},
                     why={"pick a": ["Seed One", "Seed Two"], "pick b": ["Seed Two"], "far": ["Somebody Else"]},

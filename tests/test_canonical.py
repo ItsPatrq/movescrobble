@@ -2,9 +2,9 @@ from datetime import datetime
 
 import pytest
 
-from swimscrobble import canonical, flow, history
-from swimscrobble.config import Config
-from swimscrobble.scrobble import Scrobble
+from movescrobble import canonical, flow, history
+from movescrobble.config import Config
+from movescrobble.scrobble import Scrobble
 
 
 @pytest.fixture

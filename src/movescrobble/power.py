@@ -172,7 +172,7 @@ def leaderboard(db, n: int = 3) -> tuple[list[tuple[str, str, float]], list[tupl
 
 def soundtrack(heard: list[Heard], efforts: list[Effort]) -> str:
     timed = {(e.artist, e.title): e for e in efforts}
-    lines = [f"{garmin.SOUNDTRACK_MARK} (swimscrobble):"]
+    lines = [f"{garmin.SOUNDTRACK_MARK} (movescrobble):"]
     for i, h in enumerate(heard, 1):
         e = timed.get((h.artist, h.title))
         lines.append(f"{i}. {h.artist} - {h.title}" + (f" ({fmt_min(round(e.pace))}/100m)" if e else ""))

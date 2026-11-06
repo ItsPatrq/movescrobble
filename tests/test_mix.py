@@ -3,11 +3,11 @@ from pathlib import Path
 
 import numpy as np
 
-from swimscrobble import energy, history
-from swimscrobble.energy import Features
-from swimscrobble.generator import Candidate
-from swimscrobble.library import Track
-from swimscrobble.mix import DEFAULT_QUOTAS, build_mix
+from movescrobble import energy, history
+from movescrobble.energy import Features
+from movescrobble.generator import Candidate
+from movescrobble.library import Track
+from movescrobble.mix import DEFAULT_QUOTAS, build_mix
 
 
 def T(i, artist=None, dur=200):

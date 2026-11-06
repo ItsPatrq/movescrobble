@@ -1,4 +1,4 @@
-from swimscrobble.session import played_part
+from movescrobble.session import played_part
 
 
 def manifest(n=24, dur=300, minutes=60):

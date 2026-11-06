@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from swimscrobble import acquire, generator, history, matcher, pocketcasts, poolsync, ytm
-from swimscrobble.library import Track
-from swimscrobble.planner import plan_session
+from movescrobble import acquire, generator, history, matcher, pocketcasts, poolsync, ytm
+from movescrobble.library import Track
+from movescrobble.planner import plan_session
 
 
 def T(a, t, d=200):
@@ -130,7 +130,7 @@ def test_pocketcasts_latest_unplayed_per_subscription():
 
 
 def test_pocketcasts_login_saves_token_private(monkeypatch, tmp_path):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path))
     tok = pocketcasts.login("e", "p", lambda path, body, t: {"token": "abc"})
     assert tok == "abc" and pocketcasts.saved_token() == "abc"
     assert (tmp_path / "pocketcasts.json").stat().st_mode & 0o777 == 0o600

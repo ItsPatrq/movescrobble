@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from swimscrobble import history, ytmirror
-from swimscrobble.config import Config
+from movescrobble import history, ytmirror
+from movescrobble.config import Config
 
 
 class FakeYT:
@@ -56,7 +56,7 @@ def on_yt(*ids):
 def test_first_time_creates_a_private_playlist_in_play_order(db):
     yt = FakeYT()
     out = ytmirror.update(db, Config(), manifest("1", "2"), yt, video)
-    assert yt.calls == [("create", "swimscrobble: on the headphones", "PRIVATE", ["v1", "v2"])]
+    assert yt.calls == [("create", "movescrobble: on the headphones", "PRIVATE", ["v1", "v2"])]
     assert history.get_meta(db, ytmirror.META_KEY) == "PLnew"
     assert out == "YouTube playlist updated (2/2 tracks)"
 
@@ -142,7 +142,7 @@ def test_without_login_there_is_nothing_to_do(db):
 
 
 def test_a_shell_edit_reaches_youtube(tmp_path, monkeypatch, db):
-    from swimscrobble import editing
+    from movescrobble import editing
 
     seen = []
     monkeypatch.setattr(ytmirror, "update", lambda _db, _cfg, m: seen.append([t["title"] for t in m["tracks"]]))

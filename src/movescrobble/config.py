@@ -1,4 +1,4 @@
-"""Config from ~/.config/swimscrobble/config.toml; env SWIMSCROBBLE_CONFIG overrides the path."""
+"""Config from ~/.config/movescrobble/config.toml; env MOVESCROBBLE_CONFIG overrides the path."""
 from __future__ import annotations
 
 import functools
@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def config_dir() -> Path:
-    return Path(os.environ.get("SWIMSCROBBLE_HOME", Path.home() / ".config" / "swimscrobble"))
+    return Path(os.environ.get("MOVESCROBBLE_HOME", Path.home() / ".config" / "movescrobble"))
 
 
 @dataclass
@@ -45,13 +45,13 @@ class Config:
     podcast_speed: float = 1.3  # the headphones cannot speed up playback: podcasts are re-encoded faster (1 = off)
     podcast_trim_silence: bool = True  # cut pauses longer than ~0.6 s down to 0.3 s
     loudness_target: float = -11  # LUFS every staged track is brought to (0 = copy files untouched; TOML has no null)
-    garmin: bool = False  # take swim start + length from Garmin Connect (run `swimscrobble garmin-auth` once)
+    garmin: bool = False  # take swim start + length from Garmin Connect (run `movescrobble garmin-auth` once)
     warmup_minutes: float = 8  # with Garmin: the music starts this long before the watch (shower, warm-up)
     cooldown_minutes: float = 11  # with Garmin: and keeps playing this long after it stops
     garmin_soundtrack: bool = True  # write what you swam to into the Garmin activity's description
     garmin_run_soundtrack: bool = True  # write what Last.fm says you played on a run into its Garmin description
     ytm_mirror: bool = True  # keep a YouTube Music playlist equal to the one on the headphones (needs `ytm-auth`)
-    ytm_mirror_title: str = "swimscrobble: on the headphones"
+    ytm_mirror_title: str = "movescrobble: on the headphones"
     ytm_mirror_privacy: str = "PRIVATE"  # or UNLISTED, PUBLIC
     arc: bool = False
     mix_weights: dict[str, float] = field(default_factory=lambda: {
@@ -66,8 +66,8 @@ class Config:
     min_energy: float = 0.5  # drop slow/ballad tracks below this energy (0..1)
     workout: str = "steady"  # energy curve over the swim: steady | intervals | easy | pyramid (per swim: reroll --workout)
     space_reserve_mb: float = 200  # always left free on the headphones
-    # `swimscrobble ytm-auth` writes it: lets liked tracks go to your playlist
-    ytm_auth_file: str = "~/.config/swimscrobble/ytm_browser.json"
+    # `movescrobble ytm-auth` writes it: lets liked tracks go to your playlist
+    ytm_auth_file: str = "~/.config/movescrobble/ytm_browser.json"
     volumes_dir: str = "/Volumes"
     stage_subdir: str = ""  # under the device music folder; "" = its root
     lastfm_user: str = ""
@@ -110,7 +110,7 @@ class Config:
 
 
 def load(path: Path | None = None) -> Config:
-    path = path or Path(os.environ.get("SWIMSCROBBLE_CONFIG", config_dir() / "config.toml"))
+    path = path or Path(os.environ.get("MOVESCROBBLE_CONFIG", config_dir() / "config.toml"))
     if not path.exists():
         return Config()
     data = tomllib.loads(path.read_text())
@@ -148,7 +148,7 @@ def _secrets_file(path: Path, mtime: float) -> dict:
 
 
 def secret(name: str) -> str | None:
-    """Env var first, then ~/.config/swimscrobble/secrets.toml (launchd does not inherit shell env)."""
+    """Env var first, then ~/.config/movescrobble/secrets.toml (launchd does not inherit shell env)."""
     if os.environ.get(name):
         return os.environ[name]
     f = config_dir() / "secrets.toml"

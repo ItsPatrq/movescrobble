@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import urllib.request
 
-USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) swimscrobble"
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) movescrobble"
 
 
 def open_url(url: str, data: bytes | None = None, headers: dict | None = None, timeout: float = 30):

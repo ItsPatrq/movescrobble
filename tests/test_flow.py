@@ -4,17 +4,17 @@ from datetime import datetime
 
 import pytest
 
-from swimscrobble import flow, history, launchd
-from swimscrobble.config import Config
-from swimscrobble.energy import Features
-from swimscrobble.garmin import Swim
-from swimscrobble.library import Track
-from swimscrobble.pocketcasts import PodcastReport
+from movescrobble import flow, history, launchd
+from movescrobble.config import Config
+from movescrobble.energy import Features
+from movescrobble.garmin import Swim
+from movescrobble.library import Track
+from movescrobble.pocketcasts import PodcastReport
 
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path / "home"))
     music = tmp_path / "music"
     music.mkdir()
     lib = []
@@ -115,7 +115,7 @@ def test_one_notification_sums_up_the_connection(env):
     log, msgs = run(cfg, db, lib, podcast_sync=lambda: PodcastReport(downloaded=["x"], on_device=3),
                     pool_sync=lambda: (_ for _ in ()).throw(RuntimeError("lastfm down")))
     assert len(msgs) == 1
-    assert msgs[0].startswith("swimscrobble: 3 podcasts (1 new) · pool sync FAILED: lastfm down · staged 24 tracks")
+    assert msgs[0].startswith("movescrobble: 3 podcasts (1 new) · pool sync FAILED: lastfm down · staged 24 tracks")
 
 
 def swim_at(hour=8, minute=15):
@@ -138,7 +138,7 @@ def test_plugging_in_never_scrobbles_and_keeps_an_unsettled_playlist(env):
     assert history.pending_session(db)["id"] == first
     assert sorted(p.name for p in (vol / "SWIM PRO" / "Music").iterdir()) == before
     assert db.execute("SELECT COUNT(*) c FROM plays").fetchone()["c"] == 0
-    assert "keeping session" in log[0] and msgs == ["swimscrobble: playlist unchanged"]
+    assert "keeping session" in log[0] and msgs == ["movescrobble: playlist unchanged"]
 
 
 def test_plugging_in_after_a_settled_swim_stages_the_next_playlist(env):

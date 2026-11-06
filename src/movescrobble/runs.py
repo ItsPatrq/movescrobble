@@ -21,7 +21,7 @@ def tracks_during(db, run: Run) -> list[tuple[str, str]]:
 
 
 def soundtrack(tracks: list[tuple[str, str]]) -> str:
-    lines = [f"{garmin.RUN_SOUNDTRACK_MARK} (swimscrobble):"]
+    lines = [f"{garmin.RUN_SOUNDTRACK_MARK} (movescrobble):"]
     lines += [f"{i}. {artist} - {title}" for i, (artist, title) in enumerate(tracks, 1)]
     return "\n".join(lines)
 

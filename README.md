@@ -1,8 +1,11 @@
-# swimscrobble
+# movescrobble
 
 Offline MP3-mode headphones (built for the Shokz OpenSwim Pro) keep **no play history**, so
-nothing can be scrobbled from the device. swimscrobble makes the session deterministic: it
+nothing can be scrobbled from the device. movescrobble makes the session deterministic: it
 plans what will play, you swim, then it scrobbles exactly what was planned.
+
+It also follows your other workouts: runs recorded on Garmin get the tracks Last.fm saw during them written onto the
+activity. The headphones get one playlist, whatever you use it for, and `garmin-sync` works out what you actually did.
 
 ## The flow
 
@@ -22,7 +25,7 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
      - **lost** (10%): played or loved long ago, silent for 90+ days;
      - **rec** (20%): never played, by artists you have not played either (discovery), scored by the
        taste graph below; a discovery it does not connect to your listening is left out.
-   - **Taste graph** (`taste.py`, see what it suggests with `swimscrobble recs`): artists, genres and tracks
+   - **Taste graph** (`taste.py`, see what it suggests with `movescrobble recs`): artists, genres and tracks
      linked by Last.fm similarity (artist.getSimilar, track.getSimilar) and IDF-weighted genre tags. A random
      walk with restart (personalised PageRank) starts from the artists you play *now* (this month counts most)
      and your current favourite tracks; how often it lands on an artist is how close they are to your taste
@@ -45,12 +48,12 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
      covers or live versions) and downloaded, up to `auto_fetch` (default 20) per sync, into the same
      library folder (`<album>/<artist> - <title>.mp3`). Only tracks you played 3+ times in the last year are wanted (podcast-looking titles are skipped, the
      list is capped at 300). Misses are remembered, retried after 30 days, and do not use up the quota. The list with search links is also
-     written to `~/.config/swimscrobble/wishlist.txt`. Adding tracks to your playlist still works too
+     written to `~/.config/movescrobble/wishlist.txt`. Adding tracks to your playlist still works too
      and gives you control over what is in the pool.
 2. **Swim.**
 3. **Scrobble**: the staged list (`playlist_minutes`, default 120) is longer than the swim (`minutes`, default 60) so
-   it can't run out. **`swimscrobble garmin-sync` (shell `n`) does this at any time, headphones connected or not**, and
-   Garmin decides (`garmin = true`, after `swimscrobble garmin-auth`): the first swim recorded after staging gives the
+   it can't run out. **`movescrobble garmin-sync` (shell `n`) does this at any time, headphones connected or not**, and
+   Garmin decides (`garmin = true`, after `movescrobble garmin-auth`): the first swim recorded after staging gives the
    real start and length (elapsed, so rests at the wall count) and the playlist is sent to Last.fm (and optionally
    ListenBrainz). No swim on Garmin, or Garmin unreachable: nothing is sent and the playlist stays pending. A run
    never counts. Plugging in the headphones does not scrobble either.
@@ -65,10 +68,10 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
    The headphones cannot change playback speed, so episodes are re-encoded at `podcast_speed` (default 1.3x,
    pitch kept) with pauses over 0.6 s cut to 0.3 s (`podcast_trim_silence`): roughly a quarter shorter and smaller.
    Pocket Casts never learns what you heard on the headphones: tick what you finished in the shell (`o`), or
-   `swimscrobble podcasts --done 1,3`, and those are marked played and replaced by the next sync.
+   `movescrobble podcasts --done 1,3`, and those are marked played and replaced by the next sync.
 5. **Loudness**: every staged track is levelled to `loudness_target` LUFS (default -11; two-pass, linear gain, no
    pumping) so quiet masters stay audible underwater. Originals are untouched; levelled copies are cached in
-   `~/.config/swimscrobble/loudness-cache/` (unused for 60 days: deleted). Tracks already close to the target are
+   `~/.config/movescrobble/loudness-cache/` (unused for 60 days: deleted). Tracks already close to the target are
    copied as they are. The first staging takes a few minutes; later ones only level tracks new to the cache.
 6. **Space**: before staging, the playlist is checked against the free space on the headphones (keeping
    `space_reserve_mb` free): buffer tracks are dropped from the end until it fits, and if even the swim part does
@@ -77,12 +80,12 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
 7. **Skips teach the mix**: positions you mark as skipped when scrobbling (shell `c`, or `--skip`) halve that
    track's chance next time and make the artist a little rarer; a track skipped 3 times is not picked again.
 8. **Discoveries**: after scrobbling in the shell, the new-to-you tracks you heard are listed; tick the ones you
-   liked to love them on Last.fm, and (after `swimscrobble ytm-auth`) add them to your first `ytm_playlist`,
+   liked to love them on Last.fm, and (after `movescrobble ytm-auth`) add them to your first `ytm_playlist`,
    which moves them into your obsession bucket sooner.
 9. **Workouts**: the energy curve over the swim. `steady` (warm-up, two surges, taper), `intervals` (3 hard / 3
    easy blocks), `pyramid` (build to a peak half-way, then down), `easy` (calmer tracks, even and low). Default
    `workout` in config; per swim with `reroll --workout intervals` or the shell's reroll.
-10. **Recap**: `swimscrobble recap [--days 7]` or shell `v`: swims, hours, distance (Garmin), tracks heard,
+10. **Recap**: `movescrobble recap [--days 7]` or shell `v`: swims, hours, distance (Garmin), tracks heard,
     skips, most swum artists and the discoveries you heard. With Garmin also: pace per 100 m over your last swims,
     distance per week, average heart rate and time in each zone, and your power songs.
 11. **One notification per plug-in**, e.g. `6 podcasts (2 new) · staged 26 tracks, 119 min, 4 new · YouTube playlist
@@ -91,7 +94,7 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
     the track playing at the time. Each track gets a speed relative to that whole swim (plus heart rate and
     SWOLF); averaged over swims and trusted more as lengths add up, it makes the mix pick tracks you swim faster to
     more often and the ones that slow you down less (up to ±25-30%). Runs with
-    `swimscrobble garmin-sync`. Caveat: the last minutes of a swim are often a cool-down, so tracks there look slower.
+    `movescrobble garmin-sync`. Caveat: the last minutes of a swim are often a cool-down, so tracks there look slower.
 13. **Soundtrack on the activity** (`garmin_soundtrack = true`): the tracks you swam to, with your pace for each,
     are written into the Garmin activity's description. Your own description text is kept; re-running replaces only
     the soundtrack part. This edits Garmin Connect only: Strava and other linked services receive an activity when it
@@ -99,19 +102,19 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
     **Runs** (`garmin_run_soundtrack = true`): `garmin-sync` also writes what Last.fm says you played during each
     run of the last 30 days (`--run-days`) into that activity. No playlist is made for a run. Scrobbles that arrive
     late update the list; a run with no scrobbles is left alone.
-14. **Blocklist**: `swimscrobble block "The Weeknd"` (or `block "Artist" "Title"` for one track; no arguments lists,
+14. **Blocklist**: `movescrobble block "The Weeknd"` (or `block "Artist" "Title"` for one track; no arguments lists,
     `--remove` unblocks), the shell's `b` on a playlist track, or the shell's blocklist menu. Blocked music is never
     picked, pooled, wished for or downloaded; an artist block also catches collaborations and features.
 
 ## Install
 
 ```
-uv tool install --editable .     # puts `swimscrobble` on your PATH (~/.local/bin)
+uv tool install --editable .     # puts `movescrobble` on your PATH (~/.local/bin)
 uv venv && uv pip install -e '.[dev]'   # only needed for development / running tests
 ```
 Requires Python 3.11+, `yt-dlp` and `ffmpeg` for playlist/download features.
 
-## Config (`~/.config/swimscrobble/config.toml`)
+## Config (`~/.config/movescrobble/config.toml`)
 
 ```toml
 music_dir = "~/Music/YouTubeMusic"   # the single library: scanned recursively, downloaded into, staged to the device from here
@@ -138,17 +141,17 @@ max_podcasts = 10
 podcast_speed = 1.3          # 1 = original speed
 podcast_trim_silence = true
 loudness_target = -11        # LUFS; 0 = copy files untouched
-garmin = false               # true after `swimscrobble garmin-auth`
+garmin = false               # true after `movescrobble garmin-auth`
 garmin_soundtrack = true     # write what you swam to into the Garmin activity's description
 garmin_run_soundtrack = true # write what Last.fm says you played on a run into its Garmin description
-ytm_mirror = true            # keep a YouTube Music playlist equal to the headphones (needs `swimscrobble ytm-auth`)
-ytm_mirror_title = "swimscrobble: on the headphones"
+ytm_mirror = true            # keep a YouTube Music playlist equal to the headphones (needs `movescrobble ytm-auth`)
+ytm_mirror_title = "movescrobble: on the headphones"
 ytm_mirror_privacy = "PRIVATE"   # or UNLISTED, PUBLIC
 warmup_minutes = 8           # with Garmin: music starts this long before the watch (scrobbled too)
 cooldown_minutes = 11        # with Garmin: and plays on this long after the swim (scrobbled too)
 workout = "steady"           # steady | intervals | pyramid | easy
 space_reserve_mb = 200       # always left free on the headphones
-ytm_auth_file = "~/.config/swimscrobble/ytm_browser.json"   # written by `swimscrobble ytm-auth`
+ytm_auth_file = "~/.config/movescrobble/ytm_browser.json"   # written by `movescrobble ytm-auth`
 no_repeat_days = 7
 ```
 
@@ -179,19 +182,19 @@ no_repeat_days = 7
 
 ### Automatic mode
 
-`swimscrobble agent install` registers a launchd agent watching `/Volumes`. On each mount:
+`movescrobble agent install` registers a launchd agent watching `/Volumes`. On each mount:
 
 - device absent: nothing, and the next connection counts as new
 - device present, first event: sync podcasts; stage the next playlist if the last one was settled, otherwise leave
   it on the headphones; bring its YouTube Music copy in line
-- nothing is scrobbled and Garmin is not read: that is `swimscrobble garmin-sync`, whose failed submissions keep
+- nothing is scrobbled and Garmin is not read: that is `movescrobble garmin-sync`, whose failed submissions keep
   the session pending, so nothing is lost or double-sent
 
 macOS may ask for permission to access removable volumes for the agent's Python.
 
 ## The interactive shell
 
-Run `swimscrobble` with no arguments (or `swimscrobble shell`). A dashboard shows the headphones (connected, free
+Run `movescrobble` with no arguments (or `movescrobble shell`). A dashboard shows the headphones (connected, free
 space), the staged playlist (tracks, minutes, how many fill your swim, bucket mix), library and pool sizes,
 wishlist, your Last.fm history, what is excluded as recently swum, and whether the agent is installed. Then
 one key per action:
@@ -214,8 +217,8 @@ one key per action:
 item also has a shortcut letter that fires immediately. Lists (search results, YouTube Music results) are picked
 with the arrows; the wishlist is a checklist (`Space` ticks, `a` all/none, `Enter` downloads); yes/no questions
 are `y`/`n`. In the playlist view the cursor walks the tracks: `Enter` picks a track up, `↑`/`↓` carry it, `Enter`
-drops it; `d` deletes (with confirmation), `a` adds, `r` rerolls, `q` goes back. Use `swimscrobble shell --plain`
-(or `SWIMSCROBBLE_PLAIN=1`) for plain line input; that is also used automatically when not on a terminal.
+drops it; `d` deletes (with confirmation), `a` adds, `r` rerolls, `q` goes back. Use `movescrobble shell --plain`
+(or `MOVESCROBBLE_PLAIN=1`) for plain line input; that is also used automatically when not on a terminal.
 
 **What "staged" means**: the playlist this tool copied to the headphones (files named `001 - …`) and recorded in
 its database, so it knows what to scrobble. If you discard the record (`k`) but leave the files, they still play;
@@ -227,12 +230,12 @@ does the routine when you plug in, the shell is for looking, correcting and rero
 
 ## Daily use
 
-1. **After a swim or run**: `swimscrobble garmin-sync`. A swim scrobbles the playlist; runs get their tracks.
-2. **Plug in** (automatic with `swimscrobble agent install`, otherwise `swimscrobble on-connect`): podcasts refresh,
+1. **After a swim or run**: `movescrobble garmin-sync`. A swim scrobbles the playlist; runs get their tracks.
+2. **Plug in** (automatic with `movescrobble agent install`, otherwise `movescrobble on-connect`): podcasts refresh,
    and if the swim settled the playlist, the pool is refreshed and a new 2-hour playlist is staged. Eject.
 
 Plugged in before `garmin-sync`? The playlist stays until a sync settles it. Swam without Garmin recording? Use
-`swimscrobble scrobble-pending --start ISO [--played-minutes N] [--skip 3,7] --confirm --submit`.
+`movescrobble scrobble-pending --start ISO [--played-minutes N] [--skip 3,7] --confirm --submit`.
 
 **Every playlist is new.** The selection is randomised (`variety`), history moves on (what you played since
 changes the buckets), tracks you swam to in the last `no_repeat_days` (7) are skipped, and the more you swam to
@@ -240,10 +243,10 @@ a track the less it is picked. Only the first `minutes` of the 2-hour list count
 buffer is *not* marked as swum, so it comes back first.
 
 **Rotation / corrections**
-- Do not like the list? `swimscrobble reroll` (add `--sync` to refresh from Last.fm first) stages another one.
-- Staged but do not want it? `swimscrobble skip`, then plug in. Plugging in never scrobbles, so it is always harmless.
+- Do not like the list? `movescrobble reroll` (add `--sync` to refresh from Last.fm first) stages another one.
+- Staged but do not want it? `movescrobble skip`, then plug in. Plugging in never scrobbles, so it is always harmless.
 - Swam a different length? `scrobble-pending --played-minutes 45` (or `minutes` in the config).
-- Check where things stand: `swimscrobble status`.
+- Check where things stand: `movescrobble status`.
 - More variety over time: keep running `sync --download` (or let `auto_download` do it) so the library grows.
 
 ## Library and downloads
@@ -266,7 +269,7 @@ the device (the library itself is never emptied).
 - Pocket Casts has no public API; the client uses the reverse-engineered endpoints and Pocket Casts
   does not support third-party clients. Use your own account at your own risk.
 - `playlist --download` uses yt-dlp; make sure you have the right to download what you fetch.
-- Energy is a heuristic from the audio (it catches ballads/ambient well, but fast-but-mellow or slow-but-heavy tracks can misfire). Tune `min_energy`, check with `swimscrobble mix`.
+- Energy is a heuristic from the audio (it catches ballads/ambient well, but fast-but-mellow or slow-but-heavy tracks can misfire). Tune `min_energy`, check with `movescrobble mix`.
 - Whether the firmware really plays strictly by filename is unverified, see issue #2.
 
 MIT licensed.

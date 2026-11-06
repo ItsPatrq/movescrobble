@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from swimscrobble import config, history, listenbrainz
-from swimscrobble.library import Track
-from swimscrobble.planner import PlannedTrack, bpm_arc, plan_session
-from swimscrobble.scrobble import Scrobble, build_scrobbles, confirm, skip_positions, trim_to_played
+from movescrobble import config, history, listenbrainz
+from movescrobble.library import Track
+from movescrobble.planner import PlannedTrack, bpm_arc, plan_session
+from movescrobble.scrobble import Scrobble, build_scrobbles, confirm, skip_positions, trim_to_played
 
 
 def tr(i, dur=240, bpm=None, artist=None):
@@ -98,7 +98,7 @@ def test_history_session_lifecycle(tmp_path):
 
 
 def test_secret_reads_env_then_file(tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path))
     monkeypatch.delenv("MY_SECRET", raising=False)
     assert config.secret("MY_SECRET") is None
     (tmp_path / "secrets.toml").write_text('MY_SECRET = "from-file"\n')

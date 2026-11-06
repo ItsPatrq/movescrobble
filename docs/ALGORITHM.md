@@ -2,7 +2,7 @@
 
 The aim: a 2-hour, high-energy, *varied* playlist that follows what you are into now, still has room for
 old favourites and discoveries, and plays like a workout. Every design choice below was either taken from
-the recommender-systems literature or measured on a real 13-year Last.fm history (`swimscrobble eval`).
+the recommender-systems literature or measured on a real 13-year Last.fm history (`movescrobble eval`).
 
 ## Pipeline
 
@@ -59,7 +59,7 @@ tempo + energy continuity would be small for the effort).
 
 ## Measured on a real history (227k scrobbles, 2014-2026)
 
-Reproduce with `swimscrobble eval`. Protocol: for 43 cutoff dates, rank using only the past, hit = played in
+Reproduce with `movescrobble eval`. Protocol: for 43 cutoff dates, rank using only the past, hit = played in
 the next 30 days.
 
 Repeat listening (NDCG@100):

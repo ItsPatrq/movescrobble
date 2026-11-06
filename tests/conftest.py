@@ -16,4 +16,4 @@ def pytest_collection_modifyitems(config, items):
 @pytest.fixture(autouse=True)
 def no_real_youtube(monkeypatch):
     """Config's auth file is in your real home: no test may reach your YouTube account through it."""
-    monkeypatch.setattr("swimscrobble.ytmirror.open_client", lambda cfg: None)
+    monkeypatch.setattr("movescrobble.ytmirror.open_client", lambda cfg: None)

@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from swimscrobble import acquire, history
-from swimscrobble.config import Config
-from swimscrobble.library import Track, scan
-from swimscrobble.libsync import sync_library
-from swimscrobble.link import LocalIndex
-from swimscrobble.ytm import Entry
+from movescrobble import acquire, history
+from movescrobble.config import Config
+from movescrobble.library import Track, scan
+from movescrobble.libsync import sync_library
+from movescrobble.link import LocalIndex
+from movescrobble.ytm import Entry
 
 NOW = 100 * 86400.0
 
@@ -76,7 +76,7 @@ def test_download_failure_leaves_entries_missing(tmp_path):
 
 
 def test_pool_is_the_playlist_and_history_decides_buckets(tmp_path):
-    from swimscrobble.taste import Taste
+    from movescrobble.taste import Taste
 
     db = history.connect(tmp_path / "h.db")
     db.executemany("INSERT INTO scrobbles VALUES(?,?,?)", [(int(NOW) - 86400, "Closterkeller", "Biale wino")] * 1)
@@ -144,7 +144,7 @@ def test_find_song_rejects_covers_and_lookalikes():
 
 
 def wish(artist, title, score=1.0):
-    from swimscrobble.generator import Candidate
+    from movescrobble.generator import Candidate
     return Candidate(artist, title, score, {"rec"})
 
 
@@ -194,7 +194,7 @@ def test_fetch_wishes_reports_each_download_and_keeps_yt_dlp_quiet(tmp_path, mon
 
 
 def test_notify_passes_the_text_as_an_argument(monkeypatch):
-    from swimscrobble import cli
+    from movescrobble import cli
 
     ran = []
     monkeypatch.setattr(cli.os, "uname", lambda: type("U", (), {"sysname": "Darwin"}))
@@ -219,7 +219,7 @@ def test_fetch_wishes_respects_ask_and_failures(tmp_path):
 
 
 def test_sync_fetches_wishes_into_the_library_and_they_join_the_pool(tmp_path):
-    from swimscrobble.taste import Taste
+    from movescrobble.taste import Taste
 
     db = history.connect(tmp_path / "h.db")
     db.executemany("INSERT INTO scrobbles VALUES(?,?,?)", [(int(NOW) - 86400 * d, "Loved Band", "Big Hit") for d in (1, 2, 3)])
@@ -247,7 +247,7 @@ def test_sync_fetches_wishes_into_the_library_and_they_join_the_pool(tmp_path):
 
 
 def test_balanced_wishes_follow_the_bucket_shares():
-    from swimscrobble.generator import Candidate
+    from movescrobble.generator import Candidate
     ws = [Candidate("A", f"o{i}", 1 - i / 100, {"obsession"}) for i in range(30)]
     ws += [Candidate("B", f"r{i}", 0.5 - i / 100, {"rec"}) for i in range(30)]
     ws += [Candidate("C", f"l{i}", 0.4 - i / 100, {"lost"}) for i in range(30)]
@@ -269,7 +269,7 @@ def test_preview_command_cuts_a_section_without_tags_or_cover(tmp_path):
 def test_player_streams_a_clip_and_stops_the_previous_one(tmp_path):
     from types import SimpleNamespace
 
-    from swimscrobble.preview import Player
+    from movescrobble.preview import Player
 
     started, stopped = [], []
 

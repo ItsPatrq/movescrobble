@@ -1,6 +1,6 @@
 import numpy as np
 
-from swimscrobble import evaluate, history
+from movescrobble import evaluate, history
 
 DAY = 86400
 

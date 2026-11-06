@@ -1,7 +1,7 @@
 """Swims recorded on a Garmin watch: when the swim started and how long it lasted (unofficial Garmin Connect API).
 
-Authorise once with `swimscrobble garmin-auth` (asks for email, password and the MFA code if your account has one);
-only the resulting tokens are stored, in ~/.config/swimscrobble/garmin/. Later runs, launchd included, reuse them.
+Authorise once with `movescrobble garmin-auth` (asks for email, password and the MFA code if your account has one);
+only the resulting tokens are stored, in ~/.config/movescrobble/garmin/. Later runs, launchd included, reuse them.
 """
 from __future__ import annotations
 

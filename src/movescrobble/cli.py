@@ -24,7 +24,7 @@ def notify(msg: str) -> None:
     if os.uname().sysname == "Darwin":
         # the text goes in as an argument: quoting it into the script breaks on non-ASCII (json's \u escapes)
         subprocess.run(["osascript", "-e", "on run argv", "-e", 'display notification (item 1 of argv) with title '
-                        '"swimscrobble"', "-e", "end run", msg], capture_output=True)
+                        '"movescrobble"', "-e", "end run", msg], capture_output=True)
 
 
 def cmd_plan(a) -> None:
@@ -102,7 +102,7 @@ def cmd_scrobble_pending(a) -> None:
                 print(f"Garmin: {sync()}")
             except Exception as e:  # scrobbled already; the next on-connect retries the analysis
                 print(f"Garmin analysis failed: {e}")
-        print("settled; run `swimscrobble on-connect` to stage the next session")
+        print("settled; run `movescrobble on-connect` to stage the next session")
 
 
 def cmd_garmin_auth(a) -> None:
@@ -287,9 +287,9 @@ def cmd_mix(a) -> None:
                            minutes=a.playlist_minutes, swim_minutes=swim, min_energy=a.min_energy)
     n_scrobbles = db.execute("SELECT COUNT(*) c FROM scrobbles").fetchone()["c"]
     if cfg.lastfm_user and not n_scrobbles:
-        print("! no Last.fm history synced yet: every track counts as discovery. Run `swimscrobble sync` first.\n")
+        print("! no Last.fm history synced yet: every track counts as discovery. Run `movescrobble sync` first.\n")
     elif db.execute("SELECT 1 FROM pool WHERE retired=0 AND source IN ('top','loved','playlist','similar') LIMIT 1").fetchone():
-        print("! the pool was built by an older version: run `swimscrobble sync` to rebuild it.\n")
+        print("! the pool was built by an older version: run `movescrobble sync` to rebuild it.\n")
     for p in plan:
         print(f"{p.position:03d}  {fmt_min(p.track.duration)}  e={p.energy:.2f}  {p.source:9}  "
               f"{p.track.artist} - {p.track.title}")
@@ -307,7 +307,7 @@ def cmd_eval(a) -> None:
 
     db = history.connect()
     if not db.execute("SELECT 1 FROM scrobbles LIMIT 1").fetchone():
-        raise SystemExit("no Last.fm history yet: run `swimscrobble sync` first")
+        raise SystemExit("no Last.fm history yet: run `movescrobble sync` first")
     print("Repeat listening: rank tracks played in the last 2 years, hit = played in the next 30 days")
     repeat = evaluate.evaluate_models(db, evaluate.REPEAT_MODELS)
     for name, (rec, ndcg, n) in sorted(repeat.items(), key=lambda kv: -kv[1][1]):
@@ -380,7 +380,7 @@ def cmd_shell(a) -> None:
     cfg = cfgmod.load()
     db = history.connect()
     console = Console(highlight=False)
-    plain = os.environ.get("SWIMSCROBBLE_PLAIN") or getattr(a, "plain", False)
+    plain = os.environ.get("MOVESCROBBLE_PLAIN") or getattr(a, "plain", False)
     ui = KeyUI(console) if keys.available() and not plain else None
     busy = Busy(console)
     shell.Shell(cfg, db, shell.real_actions(cfg, db, busy.update), console, keys=ui, busy=busy).run()
@@ -447,7 +447,7 @@ def cmd_garmin_sync(a) -> None:
 
     cfg = cfgmod.load()
     if not garmin.authorised():
-        raise SystemExit("run `swimscrobble garmin-auth` first")
+        raise SystemExit("run `movescrobble garmin-auth` first")
     print("\n".join(activity_sync(cfg, history.connect(), a.days, a.run_days)))
 
 
@@ -479,7 +479,7 @@ def cmd_agent(a) -> None:
 
 
 def main(argv=None) -> None:
-    ap = argparse.ArgumentParser(prog="swimscrobble")
+    ap = argparse.ArgumentParser(prog="movescrobble")
     sub = ap.add_subparsers()
 
     p = sub.add_parser("plan", help="build a randomised session")
@@ -581,7 +581,7 @@ def main(argv=None) -> None:
     ag.set_defaults(func=cmd_agent)
 
     args = ap.parse_args(argv)
-    if not hasattr(args, "func"):  # bare `swimscrobble`: the shell on a terminal, the help otherwise
+    if not hasattr(args, "func"):  # bare `movescrobble`: the shell on a terminal, the help otherwise
         if sys.stdin.isatty() and sys.stdout.isatty():
             return cmd_shell(args)
         return ap.print_help()

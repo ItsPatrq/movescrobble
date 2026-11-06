@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from swimscrobble.library import Track
-from swimscrobble.planner import plan_session, total_seconds
-from swimscrobble.scrobble import build_scrobbles
+from movescrobble.library import Track
+from movescrobble.planner import plan_session, total_seconds
+from movescrobble.scrobble import build_scrobbles
 
 
 def make(n, dur=240):

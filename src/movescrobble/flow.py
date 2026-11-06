@@ -322,7 +322,7 @@ def on_connect(
     except Exception as e:
         log.append(f"staging failed: {e}")
         note.append(f"staging FAILED: {e}")
-    notify("swimscrobble: " + " · ".join(note))
+    notify("movescrobble: " + " · ".join(note))
     return log
 
 

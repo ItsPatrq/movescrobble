@@ -8,12 +8,12 @@ import pytest
 from rich.console import Console
 from test_shell import Fake
 
-from swimscrobble import flow, history, keys
-from swimscrobble.config import Config
-from swimscrobble.energy import Features
-from swimscrobble.library import Track
-from swimscrobble.shell import Shell
-from swimscrobble.ui import Item, KeyUI
+from movescrobble import flow, history, keys
+from movescrobble.config import Config
+from movescrobble.energy import Features
+from movescrobble.library import Track
+from movescrobble.shell import Shell
+from movescrobble.ui import Item, KeyUI
 
 
 def ui_with(*pressed):
@@ -112,7 +112,7 @@ def test_key_reader_decodes_escape_sequences(monkeypatch):
 # -- the shell, driven by keys ----------------------------------------------------------------------
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path / "home"))
     music = tmp_path / "music"
     music.mkdir()
     lib = []
@@ -264,13 +264,13 @@ def test_a_shortcut_letter_beats_vim_movement():
 
 
 def test_plain_flag_and_env_force_line_mode(env, monkeypatch):
-    from swimscrobble import cli
+    from movescrobble import cli
     built = {}
-    monkeypatch.setattr("swimscrobble.keys.available", lambda: True)
-    monkeypatch.setattr("swimscrobble.shell.Shell.run", lambda self: built.update(keys=self.keys))
+    monkeypatch.setattr("movescrobble.keys.available", lambda: True)
+    monkeypatch.setattr("movescrobble.shell.Shell.run", lambda self: built.update(keys=self.keys))
     cli.cmd_shell(type("A", (), {"plain": False})())
     assert built["keys"] is not None
-    monkeypatch.setenv("SWIMSCROBBLE_PLAIN", "1")
+    monkeypatch.setenv("MOVESCROBBLE_PLAIN", "1")
     cli.cmd_shell(type("A", (), {"plain": False})())
     assert built["keys"] is None
 
@@ -281,7 +281,7 @@ def test_end_of_input_leaves_the_shell_quietly(env):
 
 
 def fake_taste():
-    from swimscrobble.taste import Taste
+    from movescrobble.taste import Taste
 
     return Taste(artist_score={"artist1": 0.8, "new artist": 0.6}, seeds={"Artist0": 2.0},
                  why={"artist1": ["Artist0"], "new artist": ["Artist0"]},
@@ -312,7 +312,7 @@ def test_discover_shows_the_graph_previews_steers_rebuilds_and_downloads(env):
     assert played[0][0] == "file" and played[0][1] == "Artist1"  # top of "in your files": fit 0.8
     assert ("song", "New Artist", "Fresh Song") in played and ("download", "wish1") in fake.calls
     assert len(built) == 2 and played[-1] == ("stop",)  # rebuilt once; leaving stops the clip
-    from swimscrobble.taste import Tuning
+    from movescrobble.taste import Tuning
 
     t = Tuning.load(db)
     assert t.more == ["Artist0"] and t.answer("reach") == "far afield"
@@ -332,7 +332,7 @@ def test_discover_without_lastfm_says_so(env):
 
 
 def test_discover_graph_tab_draws_a_connected_graph(env):
-    from swimscrobble.shell import _Discover
+    from movescrobble.shell import _Discover
 
     shell, _, out, *_ = discover_shell(env, [])
     d = _Discover(shell)

@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from swimscrobble import audio, garmin, history, pocketcasts
+from movescrobble import audio, garmin, history, pocketcasts
 
 
 def tone(path, seconds=6, volume_db=-30, gaps=False):
@@ -165,8 +165,8 @@ def test_old_database_gets_the_podcast_column(tmp_path):
 # --- 5: space on the headphones -------------------------------------------------------------------
 
 def _plan(tmp_path, n=10, mb=10):
-    from swimscrobble.library import Track
-    from swimscrobble.planner import PlannedTrack
+    from movescrobble.library import Track
+    from movescrobble.planner import PlannedTrack
 
     out = []
     for i in range(n):
@@ -177,7 +177,7 @@ def _plan(tmp_path, n=10, mb=10):
 
 
 def test_buffer_tracks_are_dropped_until_the_playlist_fits(tmp_path, monkeypatch):
-    from swimscrobble import flow
+    from movescrobble import flow
 
     plan = _plan(tmp_path)  # 10 x 5 min, 10 MB each
     monkeypatch.setattr(flow.shutil, "disk_usage", lambda p: SimpleNamespace(free=280e6))
@@ -202,9 +202,9 @@ def test_podcasts_leave_room_for_the_playlist(tmp_path, monkeypatch):
 # --- 6: skips -------------------------------------------------------------------------------------
 
 def test_skips_are_counted_and_a_thrice_skipped_track_is_retired(tmp_path):
-    from swimscrobble.energy import Features
-    from swimscrobble.library import Track
-    from swimscrobble.mix import build_mix
+    from movescrobble.energy import Features
+    from movescrobble.library import Track
+    from movescrobble.mix import build_mix
 
     db = history.connect(tmp_path / "h.db")
     for sid in (1, 2, 3):
@@ -222,7 +222,7 @@ def test_skips_are_counted_and_a_thrice_skipped_track_is_retired(tmp_path):
 # --- 7: liked discoveries -------------------------------------------------------------------------
 
 def test_love_and_playlist_id(monkeypatch):
-    from swimscrobble import lastfm, ytm
+    from movescrobble import lastfm, ytm
 
     sent = []
     monkeypatch.setattr(lastfm, "credentials", lambda: ("k", "s"))
@@ -234,7 +234,7 @@ def test_love_and_playlist_id(monkeypatch):
 # --- 8: workouts ----------------------------------------------------------------------------------
 
 def test_workout_shapes():
-    from swimscrobble.workouts import WORKOUTS
+    from movescrobble.workouts import WORKOUTS
 
     lo, mid, hi = 0.5, 0.7, 0.9
     iv = [WORKOUTS["intervals"].target(p / 100, lo, mid, hi) for p in range(15, 90)]
@@ -246,8 +246,8 @@ def test_workout_shapes():
 def test_every_workout_orders_a_mix(tmp_path):
     import numpy as np
 
-    from swimscrobble.sequence import order
-    from swimscrobble.workouts import WORKOUTS
+    from movescrobble.sequence import order
+    from movescrobble.workouts import WORKOUTS
 
     rng = np.random.default_rng(0)
     e = rng.uniform(0.5, 1.0, 12)
@@ -260,7 +260,7 @@ def test_every_workout_orders_a_mix(tmp_path):
 # --- 9: recap -------------------------------------------------------------------------------------
 
 def test_recap_counts_swims_minutes_distance_and_discoveries(tmp_path):
-    from swimscrobble import stats
+    from movescrobble import stats
 
     db = history.connect(tmp_path / "h.db")
     m = {"tracks": [{"position": 1, "artist": "A", "title": "Old", "source": "obsession"},
@@ -288,7 +288,7 @@ def test_old_sessions_table_gets_the_swim_columns(tmp_path):
 # --- 10: one notification per connection ----------------------------------------------------------
 
 def test_podcast_and_staged_summaries():
-    from swimscrobble import flow
+    from movescrobble import flow
 
     assert str(pocketcasts.PodcastReport(downloaded=["a"], failed=["b: 403"], on_device=6)) == "6 podcasts (1 new), 1 FAILED"
     m = {"tracks": [{"duration": 600, "source": "rec"}, {"duration": 600, "source": "obsession"}], "workout": "intervals"}
@@ -300,7 +300,7 @@ def test_busy_spinner_nests_and_ignores_updates_when_idle():
 
     from rich.console import Console
 
-    from swimscrobble.ui import Busy
+    from movescrobble.ui import Busy
 
     out = io.StringIO()
     busy = Busy(Console(file=out, force_terminal=True, width=80))
@@ -327,7 +327,7 @@ def test_podcast_sync_reports_fetch_progress(tmp_path):
 
 
 def test_blocklist_matches_artists_collaborations_and_single_tracks(tmp_path):
-    from swimscrobble import blocklist
+    from movescrobble import blocklist
 
     db = history.connect(tmp_path / "h.db")
     blocklist.block(db, "The Weeknd")
@@ -347,7 +347,7 @@ def test_blocklist_matches_artists_collaborations_and_single_tracks(tmp_path):
 
 from datetime import timedelta  # noqa: E402
 
-from swimscrobble import power  # noqa: E402
+from movescrobble import power  # noqa: E402
 
 
 def lengths_doc(start_gmt, speeds, seconds=40):
@@ -418,16 +418,16 @@ def test_garmin_sync_times_the_session_writes_the_soundtrack_once_and_feeds_the_
 
 
 def test_soundtrack_keeps_your_own_description_and_replaces_an_old_one():
-    first = garmin.with_soundtrack("", "♫ Swam to (swimscrobble):\n1. X")
-    assert first == "♫ Swam to (swimscrobble):\n1. X"
-    mine = garmin.with_soundtrack("Felt great\n\n" + first, "♫ Swam to (swimscrobble):\n1. Y")
-    assert mine == "Felt great\n\n♫ Swam to (swimscrobble):\n1. Y"
+    first = garmin.with_soundtrack("", "♫ Swam to (movescrobble):\n1. X")
+    assert first == "♫ Swam to (movescrobble):\n1. X"
+    mine = garmin.with_soundtrack("Felt great\n\n" + first, "♫ Swam to (movescrobble):\n1. Y")
+    assert mine == "Felt great\n\n♫ Swam to (movescrobble):\n1. Y"
 
 
 def test_mix_prefers_power_songs(tmp_path):
-    from swimscrobble.energy import Features
-    from swimscrobble.library import Track
-    from swimscrobble.mix import build_mix
+    from movescrobble.energy import Features
+    from movescrobble.library import Track
+    from movescrobble.mix import build_mix
 
     lib = [Track(tmp_path / f"{i}.mp3", f"Artist{i}", f"T{i}", "", 240) for i in range(40)]
     feat = lambda t: Features(120, -7, 150, 0.6, 0.8)  # noqa: E731
@@ -448,7 +448,7 @@ def test_recap_shows_pace_trend_weekly_distance_heart_rate_and_power_songs(tmp_p
                         pace * 10 / 60, 130, 150, 50, (0, 600, 1200, 0, 0))
         power.store_swim(db, s)
     db.executemany("INSERT INTO swim_tracks VALUES(1,?,?,?,0,0,0,0,?)", [("A", "fast", 20, 0.1), ("B", "slow", 20, -0.08)])
-    from swimscrobble import stats
+    from movescrobble import stats
 
     text = "\n".join(stats.recap(db, 7, now.timestamp()).lines())
     assert "2:20 → 2:12 → 2:05 (best 2:05)" in text
@@ -548,7 +548,7 @@ def test_http_download_leaves_no_partial_file_on_failure(tmp_path, monkeypatch):
 
 
 def _podcasts_cli(tmp_path, monkeypatch):
-    from swimscrobble import cli, config
+    from movescrobble import cli, config
     seen, db = [], history.connect(tmp_path / "h.db")
     monkeypatch.setattr(config, "load", lambda: config.Config(volumes_dir=str(tmp_path)))
     monkeypatch.setattr(history, "connect", lambda: db)
@@ -557,7 +557,7 @@ def _podcasts_cli(tmp_path, monkeypatch):
 
 
 def test_podcasts_command_targets_the_headphones_not_a_local_folder(tmp_path, monkeypatch):
-    from swimscrobble.config import Config
+    from movescrobble.config import Config
     cli, seen = _podcasts_cli(tmp_path, monkeypatch)
     cfg = Config(volumes_dir=str(tmp_path))
     cfg.device_path.mkdir(parents=True)

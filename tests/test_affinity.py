@@ -1,6 +1,6 @@
 import math
 
-from swimscrobble import affinity, history
+from movescrobble import affinity, history
 
 DAY = 86400
 NOW = 1000 * DAY

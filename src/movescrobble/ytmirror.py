@@ -11,7 +11,7 @@ from collections.abc import Callable
 from . import acquire, history
 
 META_KEY = "ytm_mirror_playlist"
-DESCRIPTION = "What is on the headphones right now. Managed by swimscrobble: edits made here are overwritten."
+DESCRIPTION = "What is on the headphones right now. Managed by movescrobble: edits made here are overwritten."
 
 
 def open_client(cfg):

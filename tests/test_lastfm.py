@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from swimscrobble import lastfm
-from swimscrobble.scrobble import Scrobble
+from movescrobble import lastfm
+from movescrobble.scrobble import Scrobble
 
 
 def sc(i, when):

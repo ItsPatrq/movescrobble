@@ -1,6 +1,6 @@
 """Interactive shell: dashboard, stats, playlist editing, reroll, sync, scrobble, agent.
 
-Run `swimscrobble` with no arguments. Every screen is a method; all slow or system-touching actions
+Run `movescrobble` with no arguments. Every screen is a method; all slow or system-touching actions
 (Last.fm, YouTube, the launchd agent) go through `Actions`, so the whole thing runs against fakes in tests.
 """
 from __future__ import annotations
@@ -143,7 +143,7 @@ class Shell:
         t.add_row("History", f"{d.scrobbles:,} scrobbles ({d.scrobbles_30d:,} in 30 days) · {d.swum_recently} swum in the last "
                              f"{self.cfg.no_repeat_days} days (skipped)")
         t.add_row("Agent", "[green]installed[/] (runs when you plug in)" if d.agent_installed else "[dim]not installed (g)[/]")
-        self.say(Panel(t, title="[bold]swimscrobble[/]", border_style="cyan"))
+        self.say(Panel(t, title="[bold]movescrobble[/]", border_style="cyan"))
         self.say(f"[dim]{self.hint(d)}[/]")
 
     def hint(self, d) -> str:
@@ -660,7 +660,7 @@ class Shell:
 
     def activities(self) -> None:
         if not self.act.activity_sync:
-            self.say("[yellow]Garmin is not set up: set garmin = true and run swimscrobble garmin-auth.[/]")
+            self.say("[yellow]Garmin is not set up: set garmin = true and run movescrobble garmin-auth.[/]")
             return
         with self.busy("reading your swims and runs from Garmin Connect"):
             lines = self.act.activity_sync()
@@ -696,7 +696,7 @@ class Shell:
             return self.run_keys(handlers)
         self.dashboard()
         while True:
-            key = self.ask("\nswimscrobble>").lower()
+            key = self.ask("\nmovescrobble>").lower()
             key = names.get(key, key[:1]) if key else ""
             if key in ("q",):
                 return

@@ -7,16 +7,16 @@ from types import SimpleNamespace
 import pytest
 from rich.console import Console
 
-from swimscrobble import flow, history, stats
-from swimscrobble.config import Config
-from swimscrobble.energy import Features
-from swimscrobble.library import Track
-from swimscrobble.shell import Actions, Shell
+from movescrobble import flow, history, stats
+from movescrobble.config import Config
+from movescrobble.energy import Features
+from movescrobble.library import Track
+from movescrobble.shell import Actions, Shell
 
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path / "home"))
     music = tmp_path / "music"
     music.mkdir()
     lib = []
@@ -339,10 +339,10 @@ def test_status_helper_matches_dashboard(env):
 
 
 def test_bare_command_prints_help_when_not_a_terminal(env, capsys, monkeypatch):
-    from swimscrobble import cli
+    from movescrobble import cli
     monkeypatch.setattr("sys.stdin", io.StringIO(""))
     cli.main([])
-    assert "usage: swimscrobble" in capsys.readouterr().out
+    assert "usage: movescrobble" in capsys.readouterr().out
 
 
 def test_paths_are_real(env):
@@ -353,7 +353,7 @@ def test_paths_are_real(env):
 def test_scrobble_screen_offers_the_garmin_swim(env):
     from datetime import datetime
 
-    from swimscrobble.garmin import Swim
+    from movescrobble.garmin import Swim
 
     cfg, db, *_ = env
     stage(env)
@@ -378,7 +378,7 @@ def test_podcast_screen_marks_finished_episodes_then_syncs(env):
 
 
 def test_liked_discoveries_are_loved(env):
-    from swimscrobble.planner import PlannedTrack
+    from movescrobble.planner import PlannedTrack
 
     cfg, db, lib, *_ = env
     shell, fake, out = make(env, "2")
@@ -404,7 +404,7 @@ def test_block_from_the_playlist_removes_it_and_keeps_the_artist_out_of_rerolls(
 
 
 def test_blocklist_screen_unblocks_and_blocks(env):
-    from swimscrobble import blocklist
+    from movescrobble import blocklist
 
     cfg, db, *_ = env
     blocklist.block(db, "Artist1")
@@ -418,7 +418,7 @@ def test_blocklist_screen_unblocks_and_blocks(env):
 def test_discover_in_line_mode_lists_previews_and_steers(env):
     from test_keyboard import fake_taste
 
-    from swimscrobble.taste import Tuning
+    from movescrobble.taste import Tuning
 
     cfg, db, *_ = env
     shell, fake, out = make(env, "d", "g1", "+Artist5", "", "q")

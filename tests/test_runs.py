@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from swimscrobble import garmin, history, runs
+from movescrobble import garmin, history, runs
 
 START = datetime(2026, 11, 4, 22, 0, tzinfo=timezone.utc)
 T0 = int(START.timestamp())
@@ -39,7 +39,7 @@ def test_tracks_played_during_the_run_go_on_the_activity_in_order(db):
     scrobble(db, -1, "Before", "X")
     scrobble(db, 1800, "After", "Y")
     report, written = sync(db, [activity()])
-    assert written == [(1, "♫ Ran to (swimscrobble):\n1. First - A\n2. Second - B")]
+    assert written == [(1, "♫ Ran to (movescrobble):\n1. First - A\n2. Second - B")]
     assert report == "1 runs in 30 days, soundtrack on 1"
 
 
@@ -73,7 +73,7 @@ def test_late_scrobbles_update_the_activity(db):
     sync(db, [activity()])
     scrobble(db, 300, "Two", "B")
     _, written = sync(db, [activity()])
-    assert written == [(1, "♫ Ran to (swimscrobble):\n1. One - A\n2. Two - B")]
+    assert written == [(1, "♫ Ran to (movescrobble):\n1. One - A\n2. Two - B")]
 
 
 def test_a_failed_write_is_reported_and_retried_without_stopping_the_others(db):
@@ -115,9 +115,9 @@ def test_without_a_lastfm_user_nothing_is_read_or_written(db):
 
 
 def test_your_own_description_survives_and_an_old_list_is_replaced():
-    first = garmin.with_soundtrack("Felt great", "♫ Ran to (swimscrobble):\n1. X")
-    assert garmin.with_soundtrack(first, "♫ Ran to (swimscrobble):\n1. Y") == (
-        "Felt great\n\n♫ Ran to (swimscrobble):\n1. Y")
+    first = garmin.with_soundtrack("Felt great", "♫ Ran to (movescrobble):\n1. X")
+    assert garmin.with_soundtrack(first, "♫ Ran to (movescrobble):\n1. Y") == (
+        "Felt great\n\n♫ Ran to (movescrobble):\n1. Y")
 
 
 def test_a_run_never_counts_as_the_swim_that_settles_a_session():

@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from swimscrobble.affinity import Aff, ArtistAff
-from swimscrobble.buckets import assign, classify, looks_like_song, relevance
-from swimscrobble.library import Track
-from swimscrobble.matcher import norm
-from swimscrobble.taste import Taste
+from movescrobble.affinity import Aff, ArtistAff
+from movescrobble.buckets import assign, classify, looks_like_song, relevance
+from movescrobble.library import Track
+from movescrobble.matcher import norm
+from movescrobble.taste import Taste
 
 DAY = 86400
 NOW = 4000 * DAY
@@ -123,7 +123,7 @@ def test_wishlist_skips_old_rare_and_non_song_entries():
 
 
 def test_wishlist_is_capped_per_bucket_best_first():
-    from swimscrobble import buckets
+    from movescrobble import buckets
     tr = {(f"Art{i}", f"Song{i}"): aff(now=10 + i, long=20 + i, total=50 + i, days_ago=1) for i in range(400)}
     ar = {f"Art{i}": art(now=40, total=500, days_ago=1) for i in range(400)}
     _, wanted = assign(None, tr, ar, [], now=NOW)

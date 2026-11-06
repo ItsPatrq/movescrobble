@@ -4,15 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from swimscrobble import editing, flow, history, stats
-from swimscrobble.config import Config
-from swimscrobble.energy import Features
-from swimscrobble.library import Track
+from movescrobble import editing, flow, history, stats
+from movescrobble.config import Config
+from movescrobble.energy import Features
+from movescrobble.library import Track
 
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path / "home"))
     music = tmp_path / "music"
     music.mkdir()
     lib = []
@@ -103,7 +103,7 @@ def test_scrobbling_uses_the_edited_playlist(env):
     used = {t["file"] for t in manifest(db)["tracks"]}
     new = next(t for t in lib if str(t.path) not in used)
     editing.add_track(cfg, db, new, 1)  # plays first
-    from swimscrobble.session import played_part
+    from movescrobble.session import played_part
     plan, _ = played_part(manifest(db))
     assert plan[0].track.title == new.title
 
@@ -153,7 +153,7 @@ def test_top_tracks_skip_podcast_episodes(env):
 
 
 def test_wishlist_is_interleaved_by_bucket_share(tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path))
     rows = [f"L{i} - x\t[lost]\tu" for i in range(10)] + [f"O{i} - x\t[obsession]\tu" for i in range(10)] \
         + [f"R{i} - x\t[rec]\tu" for i in range(10)]
     (tmp_path / "wishlist.txt").write_text("\n".join(rows) + "\n")

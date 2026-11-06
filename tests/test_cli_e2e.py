@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from swimscrobble.cli import main
+from movescrobble.cli import main
 
 pytestmark = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
 
@@ -25,7 +25,7 @@ def music(tmp_path):
 
 
 def test_plan_stage_and_scrobble(music, tmp_path, monkeypatch, capsys):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path / "home"))
     manifest, stage = tmp_path / "s.json", tmp_path / "stage"
     main(["plan", str(music), "--minutes", "5.2", "--playlist-minutes", "10.4", "--seed", "1",
           "--out", str(manifest), "--stage", str(stage)])
@@ -46,7 +46,7 @@ def test_plan_stage_and_scrobble(music, tmp_path, monkeypatch, capsys):
 
 
 def test_scrobble_stale_start_refuses_submit(music, tmp_path, monkeypatch):
-    monkeypatch.setenv("SWIMSCROBBLE_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path / "home"))
     manifest = tmp_path / "s.json"
     main(["plan", str(music), "--minutes", "5.2", "--playlist-minutes", "10.4", "--seed", "1", "--out", str(manifest)])
     monkeypatch.setenv("LASTFM_API_KEY", "k")
