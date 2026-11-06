@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import audio, history, lastfm, listenbrainz, power
+from . import audio, canonical, history, lastfm, listenbrainz, power
 from .blocklist import Blocklist
 from .config import Config, config_dir, read_json, write_json
 from .energy import Features, cached_features
@@ -56,16 +56,19 @@ def describe_sent(n: int, scrobbles: list, cfg: Config, listenbrainz_too: bool =
     return f"Last.fm accepted {n}/{len(scrobbles)}" + ("; sent to ListenBrainz" if cfg.listenbrainz or listenbrainz_too else "")
 
 
-def send_scrobbles(scrobbles, cfg: Config, *, listenbrainz_too=False, lastfm_submit=None, lb_submit=None) -> int:
-    """The only path that sends scrobbles: Last.fm, plus ListenBrainz when configured. Returns Last.fm's accepted count."""
+def send_scrobbles(db, scrobbles, cfg: Config, *, listenbrainz_too=False, lastfm_submit=None, lb_submit=None,
+                   listeners=None) -> int:
+    """The only path that sends scrobbles: Last.fm, plus ListenBrainz when configured. Returns Last.fm's accepted count.
+    Each track goes to the page it already has (canonical.py); `scrobbles` itself keeps the file's tags."""
     lastfm_submit = lastfm_submit or (lambda s: lastfm.submit(s, lastfm.load_session_key()))
     lb_submit = lb_submit or listenbrainz.submit
     stale = lastfm.check_window(scrobbles)
     if stale:
         raise ValueError(f"{len(stale)} scrobbles outside Last.fm's 14-day window")
-    n = lastfm_submit(scrobbles)
+    outgoing = canonical.canonicalize(scrobbles, db, listeners)
+    n = lastfm_submit(outgoing)
     if cfg.listenbrainz or listenbrainz_too:
-        lb_submit(scrobbles)
+        lb_submit(outgoing)
     return n
 
 
@@ -119,7 +122,7 @@ def record(db, session_row, settled: Settled) -> None:
 
 def submit_session(db, session_row, settled: Settled, cfg: Config, **deps) -> int:
     """Send to configured services, then mark the session scrobbled exactly once. Returns Last.fm's accepted count."""
-    n = send_scrobbles(settled.scrobbles, cfg, **deps)
+    n = send_scrobbles(db, settled.scrobbles, cfg, **deps)
     record(db, session_row, settled)
     return n
 

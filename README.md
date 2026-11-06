@@ -56,6 +56,11 @@ plans what will play, you swim, then it scrobbles exactly what was planned.
    staging and plug-in gives the real start time and length (elapsed, so rests at the wall count), and is
    scrobbled straight away even with `auto_submit = false` (`garmin_auto_submit`). No swim on Garmin (or Garmin
    unreachable): the session is parked for confirmation as before. The shell and `scrobble-pending` use it too.
+   **One song, one page** (`canonical.py`): a file tagged `Apparat, Philipp Johann Thimm` is sent to the page the song
+   already has, not a new one for that credit. Among your history's spellings (same title, same or fewer of the credited
+   artists) the one with the most Last.fm listeners wins; for a song you never played, the credited artist Last.fm
+   knows it under. Remixes, live takes and covers stay separate. Your files and local records keep their tags, and
+   previews (`--confirm`, the shell, CSV) show those tags, not the page.
 4. **Podcasts**: the newest episode of each Pocket Casts subscription, unless already played or
    archived, is mirrored to the device's `PocketCast/` folder (newest first, at most `max_podcasts`; not scrobbled).
    Runs on every connection, even when the previous session is still awaiting confirmation.
