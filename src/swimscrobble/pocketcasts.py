@@ -9,6 +9,7 @@ import json
 import re
 import shutil
 import tempfile
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -21,6 +22,8 @@ from .net import open_url, request_json
 
 API = "https://api.pocketcasts.com"
 TOKEN_FILE = "pocketcasts.json"
+SCRATCH_PREFIX = "swimscrobble-podcasts-"
+STALE_SCRATCH_S = 24 * 3600
 
 Transport = Callable[[str, dict, str | None], dict]  # (path, body, token) -> json
 Downloader = Callable[[str, Path], None]
@@ -40,9 +43,12 @@ def http_post(path: str, body: dict, token: str | None) -> dict:
 
 def http_download(url: str, dest: Path) -> None:
     tmp = dest.with_suffix(dest.suffix + ".part")
-    with open_url(url, timeout=60) as r, open(tmp, "wb") as f:
-        shutil.copyfileobj(r, f)
-    tmp.rename(dest)  # never leave half files that look complete
+    try:
+        with open_url(url, timeout=60) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        tmp.rename(dest)  # never leave half files that look complete
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def login(email: str | None = None, password: str | None = None, transport: Transport = http_post) -> str:
@@ -158,6 +164,26 @@ def filename_for(position: int, episode: dict, ext: str | None = None) -> str:
     return f"{position:02d} - {_safe(episode.get('title', 'episode'))}{ext}"
 
 
+def _sweep_stale_scratch() -> None:
+    """A killed sync cannot clean up after itself. Recent folders are left alone: they may belong to a running sync."""
+    for old in Path(tempfile.gettempdir()).glob(SCRATCH_PREFIX + "*"):
+        try:
+            if time.time() - old.stat().st_mtime > STALE_SCRATCH_S:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass  # gone already
+
+
+def _copy_whole(src: Path, dest: Path) -> None:
+    """A file under its final name is complete: sync takes an existing episode as done and never reads it back."""
+    part = dest.with_name(dest.name + ".part")
+    try:
+        shutil.copyfile(src, part)
+        part.replace(dest)
+    finally:
+        part.unlink(missing_ok=True)
+
+
 def sync_queue(
     episodes: list[dict],
     dest: Path,
@@ -171,11 +197,14 @@ def sync_queue(
     """Make `dest` hold the first N episodes, ordered by filename prefix.
 
     New episodes are fetched (and processed) in parallel into a local scratch folder, then copied to `dest` once each:
-    the device is written to once per file and never read back. An episode that would leave less than `reserve_mb`
-    free (room for the next playlist) is skipped; newest come first, so the oldest are the ones left out.
+    the device is written to once per file and never read back. Each scratch file is deleted as soon as it is copied,
+    so episodes never stay on this computer. An episode that would leave less than `reserve_mb` free (room for the next
+    playlist) is skipped; newest come first, so the oldest are the ones left out.
     """
     fetcher = fetcher if isinstance(fetcher, Fetcher) else Fetcher(fetcher) if fetcher else Fetcher()
     dest.mkdir(parents=True, exist_ok=True)
+    for leftover in dest.glob("*.part"):  # copy cut short by a killed run
+        leftover.unlink(missing_ok=True)
     want = {e["uuid"]: (filename_for(i + 1, e, fetcher.ext), e) for i, e in enumerate(episodes[:max_episodes])}
     have = {r["uuid"]: (r["filename"], r["variant"]) for r in db.execute("SELECT uuid, filename, variant FROM podcasts")}
     report = PodcastReport()
@@ -203,7 +232,8 @@ def sync_queue(
         budget -= size
         todo.append((uuid, name, ep))
 
-    with tempfile.TemporaryDirectory(prefix="swimscrobble-podcasts-") as tmp:
+    _sweep_stale_scratch()
+    with tempfile.TemporaryDirectory(prefix=SCRATCH_PREFIX) as tmp:
         done = itertools.count(1)  # next() on a count is atomic in CPython: safe across the pool's threads
 
         def fetch(item):
@@ -218,14 +248,19 @@ def sync_queue(
         if todo:
             progress(f"podcasts: fetching 0/{len(todo)}")
         with ThreadPoolExecutor(max_workers=workers) as pool:  # network + ffmpeg bound, independent
-            errors = list(pool.map(fetch, todo))
-        for i, ((_uuid, name, _ep), err) in enumerate(zip(todo, errors, strict=True), 1):
-            if err:
-                report.failed.append(f"{name}: {err}")
-                continue
-            progress(f"podcasts: copying to the headphones {i}/{len(todo)}")
-            shutil.copyfile(Path(tmp) / name, dest / name)
-            report.downloaded.append(name)
+            try:
+                # map yields as episodes finish: copying meanwhile keeps the scratch folder from holding them all
+                for i, ((_uuid, name, _ep), err) in enumerate(zip(todo, pool.map(fetch, todo), strict=True), 1):
+                    if err:
+                        report.failed.append(f"{name}: {err}")
+                        continue
+                    progress(f"podcasts: copying to the headphones {i}/{len(todo)}")
+                    _copy_whole(Path(tmp) / name, dest / name)
+                    (Path(tmp) / name).unlink()
+                    report.downloaded.append(name)
+            except BaseException:  # device gone: do not download the rest for nothing
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
 
     failed = {f.split(": ", 1)[0] for f in report.failed} | set(report.no_space)
     for uuid, (name, ep) in want.items():

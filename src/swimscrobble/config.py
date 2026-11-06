@@ -42,7 +42,6 @@ class Config:
     ytm_playlists: list[str] = field(default_factory=list)  # more playlists; all are synced locally
     pool: str = "library"  # "library": every track in music_dir is eligible; "playlist": only those in your playlist(s)
     listenbrainz: bool = False
-    podcast_dir: str = "~/Music/swim-podcasts"
     max_podcasts: int = 10
     podcast_speed: float = 1.3  # the headphones cannot speed up playback: podcasts are re-encoded faster (1 = off)
     podcast_trim_silence: bool = True  # cut pauses longer than ~0.6 s down to 0.3 s
@@ -98,10 +97,6 @@ class Config:
     @property
     def music_path(self) -> Path:
         return Path(self.music_dir).expanduser()
-
-    @property
-    def podcast_path(self) -> Path:
-        return Path(self.podcast_dir).expanduser()
 
     @property
     def device_path(self) -> Path:
