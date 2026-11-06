@@ -116,18 +116,48 @@ def cmd_garmin_auth(a) -> None:
         print("now set `garmin = true` in config.toml so swims are read from Garmin")
 
 
-def cmd_ytm_auth(a) -> None:
-    """Browser auth for YouTube Music, needed only to add liked discoveries to your playlist."""
-    import ytmusicapi
+def _pick_browser(a) -> str:
+    from . import ytmauth
 
-    cfg = cfgmod.load()
-    path = cfg.ytm_auth_file_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    print("In music.youtube.com (logged in): DevTools > Network > any POST to /browse > copy the request headers,")
-    print("paste them here, then press Ctrl-D.")
-    ytmusicapi.setup(filepath=str(path))
-    path.chmod(0o600)
-    print(f"saved {path}")
+    if a.browser:
+        return a.browser
+    found = ytmauth.installed()
+    if not found:
+        raise SystemExit("no supported browser found: name one with --browser, or export cookies.txt and use --cookies")
+    if len(found) == 1:
+        return found[0]
+    print("Which browser are you signed in to YouTube Music with?")
+    for i, name in enumerate(found, 1):
+        print(f"  {i}. {name}")
+    answer = input(f"Number [1-{len(found)}]: ").strip()
+    if not answer.isdigit() or not 1 <= int(answer) <= len(found):
+        raise SystemExit("no browser picked; nothing was read")
+    return found[int(answer) - 1]
+
+
+def cmd_ytm_auth(a) -> None:
+    """Sign in to YouTube Music with a browser session: needed to keep the headphones playlist there."""
+    from . import ytmauth
+
+    path = cfgmod.load().ytm_auth_file_path
+    print("YouTube Music has no login for tools like this, so movescrobble uses your browser's session cookies.")
+    print(f"Only the youtube.com ones are kept, in {path}, readable only by you.")
+    print("They can act as your Google account on YouTube: never share that file. Delete it to sign out here.\n")
+    try:
+        if a.cookies:
+            cookies = ytmauth.read_file(Path(a.cookies).expanduser())
+        else:
+            browser = _pick_browser(a)
+            if note := ytmauth.WHAT_TO_EXPECT.get(browser):
+                print(note)
+            cookies = ytmauth.read_browser(browser, a.profile)
+        headers = ytmauth.headers_from(cookies, a.account)
+        name = ytmauth.account_name(headers)
+    except ytmauth.LoginError as e:
+        raise SystemExit(str(e)) from None
+    ytmauth.save(path, headers)
+    print(f"Signed in as {name}. If that is the wrong account, run this again with --account 1 (2, 3...).")
+    print("Next: `movescrobble on-connect` with the headphones plugged in creates the playlist.")
 
 
 def cmd_recap(a) -> None:
@@ -537,8 +567,12 @@ def main(argv=None) -> None:
     sub.add_parser("eval", help="replay your Last.fm history to evaluate the scoring models").set_defaults(func=cmd_eval)
 
     sub.add_parser("lastfm-auth", help="authorise on Last.fm").set_defaults(func=cmd_lastfm_auth)
-    sub.add_parser("ytm-auth", help="YouTube Music browser auth (adds liked discoveries to your playlist)").set_defaults(
-        func=cmd_ytm_auth)
+    ya = sub.add_parser("ytm-auth", help="sign in to YouTube Music using a browser you are already signed in to")
+    ya.add_argument("--browser", help="firefox, chrome, brave, edge, vivaldi, opera or safari (default: ask)")
+    ya.add_argument("--profile", help="browser profile, if not the default one")
+    ya.add_argument("--account", type=int, default=0, help="which Google account, with several signed in (0 = first)")
+    ya.add_argument("--cookies", help="use a cookies.txt exported from a signed-in browser instead")
+    ya.set_defaults(func=cmd_ytm_auth)
     rc = sub.add_parser("recap", help="swims, minutes, discoveries over the last days")
     rc.add_argument("--days", type=int, default=7)
     rc.set_defaults(func=cmd_recap)
