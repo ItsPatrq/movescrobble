@@ -169,7 +169,7 @@ no_repeat_days = 7
 | `eval` | replay your Last.fm history and score the models behind the playlist (reproduces docs/ALGORITHM.md) |
 | `recs [-n N]` | the taste graph's discoveries and tracks to try, with the artists of yours that lead there |
 | `recap [--days N]` | swims, time, distance, tracks, skips, discoveries |
-| `ytm-auth` | YouTube Music browser login, only to add liked discoveries to your playlist |
+| `ytm-auth [--browser NAME] [--account N] [--cookies FILE]` | sign in to YouTube Music using a browser you are already signed in to: keeps the headphones playlist there, adds liked discoveries to your playlist |
 | `garmin-auth` | one-time Garmin Connect login (email, password, MFA code if enabled); only tokens are stored |
 | `garmin-sync [--days 60] [--run-days 30]` | anytime, no headphones needed: a swim on Garmin scrobbles the staged playlist (then times its tracks, writes its soundtrack); runs get their tracks from Last.fm |
 | `block [artist] [title] [--remove]` | never play an artist or one track; no arguments lists the blocklist |
@@ -227,6 +227,15 @@ to remove the files.
 
 The shell and the agent share everything (database, config, device state), so use either, or both: the agent
 does the routine when you plug in, the shell is for looking, correcting and rerolling.
+
+## YouTube Music login
+
+`movescrobble ytm-auth`, nothing to copy or paste. YouTube Music has no login for tools like this: it authorises requests
+with your browser's session cookies. So this reads them from a browser you are signed in to (Firefox reads without a
+prompt; Chrome-based browsers make macOS ask for their "Safe Storage" key; Safari needs Full Disk Access), keeps only the
+youtube.com ones, checks them with a read-only call that shows the account name, and only then saves them to
+`ytm_browser.json`, readable only by you. That file can act as your Google account on YouTube: never share it, and delete
+it to sign out here. When Google ends the session, playlist updates report `YouTube playlist FAILED`: run it again.
 
 ## Daily use
 
