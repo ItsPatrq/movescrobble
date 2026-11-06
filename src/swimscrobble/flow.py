@@ -1,9 +1,12 @@
-"""The automatic flow that runs when the headphones are connected.
+"""The two separate flows.
 
-1. refresh podcasts: newest unplayed episode of each Pocket Casts subscription (always, even if 2 stops early)
-2. settle the previous session (scrobble it, or park it for confirmation)
-   then, with Garmin: remember recent swims, time each track of the scrobbled one (power songs, soundtrack)
-3. plan + stage the next session
+Headphones connected (`on_connect`): syncs what is on them and nothing else.
+1. refresh podcasts: newest unplayed episode of each Pocket Casts subscription
+2. if the staged playlist has been settled, plan + stage the next one; otherwise it stays
+3. keep the YouTube Music copy of the playlist in line
+
+Activities (`settle_swim`, run from `garmin-sync` at any time, headphones or not): Garmin data decides. Only a swim
+recorded after staging scrobbles the playlist. A run never touches it; see runs.py.
 """
 from __future__ import annotations
 
@@ -18,15 +21,15 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from . import audio, canonical, history, lastfm, listenbrainz, power
+from . import audio, canonical, history, lastfm, listenbrainz, power, ytmirror
 from .blocklist import Blocklist
-from .config import Config, config_dir, read_json, write_json
+from .config import Config, read_json, write_json
 from .energy import Features, cached_features
 from .generator import Candidate
 from .library import Track, scan_config
 from .mix import build_mix
 from .planner import NEW_TO_YOU, STAGED_RE, PlannedTrack
-from .scrobble import build_scrobbles, to_csv
+from .scrobble import build_scrobbles
 from .session import played_part, to_manifest
 from .workouts import DEFAULT as DEFAULT_WORKOUT
 
@@ -127,34 +130,22 @@ def submit_session(db, session_row, settled: Settled, cfg: Config, **deps) -> in
     return n
 
 
-def settle_previous(db, cfg: Config, now: datetime, notify, find_swim: FindSwim | None = None,
-                    **deps) -> tuple[str, bool]:
-    """(log message, whether a new session may be staged over it).
-
-    A Garmin swim gives the real start and length, and is proof enough of a swim to scrobble without asking
-    (`garmin_auto_submit`). Without one, the length is the planned swim, ending at plug-in.
-    """
+def settle_swim(db, cfg: Config, now: datetime, find_swim: FindSwim, warn: Callable[[str], None] = _quiet,
+                **deps) -> str:
+    """Scrobble the staged playlist if Garmin shows a swim since it was staged; without one, nothing happens."""
     row = history.pending_session(db)
     if row is None:
-        return "no previous session", True
-    if now.timestamp() - row["planned_at"] < cfg.min_swim_gap_minutes * 60:
-        return "too soon", False  # staged moments ago (plugged in twice?): nothing can have been swum yet
-    swim = lookup_swim(find_swim, row, now, notify)
+        return "no staged playlist waiting for a swim"
+    swim = lookup_swim(find_swim, row, now, warn)
+    if swim is None:
+        return "no swim on Garmin since the playlist was staged"
     settled = settle(json.loads(row["manifest"]), cfg, now, swim)
-    if cfg.auto_submit or (swim and cfg.garmin_auto_submit):
-        try:
-            n = submit_session(db, row, settled, cfg, **deps)
-        except Exception as e:  # keep the session pending so nothing is lost
-            notify(f"scrobbling FAILED: {e}")
-            return f"failed: {e}", False
-        msg = (f"Garmin {swim.describe()}: " if swim else "") + f"scrobbled {n} tracks"
-        notify(msg)
-        return msg, True
-    out = config_dir() / "pending" / f"session-{row['id']}.csv"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(to_csv(settled.scrobbles))
-    notify("last swim awaiting confirmation (swimscrobble scrobble-pending)")
-    return "awaiting confirmation", False
+    try:
+        n = submit_session(db, row, settled, cfg, **deps)
+    except Exception as e:  # keep the session pending so nothing is lost
+        return f"scrobbling FAILED: {e}"
+    _set_handled(False)  # the headphones may stage the next playlist
+    return f"{swim.describe()}: scrobbled {n} tracks"
 
 
 def clear_staged(stage_dir: Path, previous_manifest: dict | None) -> int:
@@ -274,12 +265,13 @@ def on_connect(
     feature_of: Callable[[Track], Features] | None = None,
     podcast_sync: Callable[[], object] | None = None,  # -> a report whose str() is the summary
     pool_sync: Callable[[], str] | None = None,
-    garmin_sync: Callable[[], str] | None = None,
     force: bool = False,
     progress: Progress = _quiet,
-    **deps,
+    mirror: Callable[[dict], str] | None = None,
 ) -> list[str]:
-    """`force`: run even if this connection was already handled (the shell's "run it now")."""
+    """Sync the headphones; activities are not looked at. A playlist not yet settled stays on them, because a swim to it
+    may still show up on Garmin. `force`: run even if this connection was already handled (the shell's "run it now")."""
+    mirror = mirror or (lambda m: ytmirror.update(db, cfg, m))
     now = now or datetime.now()
     log: list[str] = []
     library_loader = library_loader or (lambda p: scan_config(cfg, p))
@@ -308,13 +300,12 @@ def on_connect(
         if podcast_sync:  # independent of the playlist: runs on every connection
             progress("syncing podcasts")
             step("podcasts", podcast_sync, str)
-        progress("settling the last swim")
-        settled, may_stage = settle_previous(db, cfg, now, note.append, **deps)
-        log.append(settled)
-        if garmin_sync:  # after settling: the swim just scrobbled gets its tracks timed (and its soundtrack)
-            progress("reading swims from Garmin Connect")
-            step("garmin", garmin_sync)
-        if may_stage:  # never plan over an unsettled (or still current) session
+        row = history.pending_session(db)
+        if row:
+            manifest = json.loads(row["manifest"])
+            log.append(f"keeping session {row['id']}: settled only by a swim on Garmin (garmin-sync)")
+            note.append("playlist unchanged")
+        else:
             if pool_sync:  # a failed refresh must not block staging; the old pool still works
                 progress("syncing Last.fm history and the pool")
                 step("pool sync", pool_sync)
@@ -324,6 +315,10 @@ def on_connect(
                                       feature_of=feature_of, now=now, progress=progress)
             log.append(f"staged session {manifest['id']}: {len(manifest['tracks'])} tracks")
             note.append(staged_summary(manifest))
+        progress("updating the YouTube Music playlist")
+        if mirrored := mirror(manifest):
+            log.append(mirrored)
+            note.append(mirrored)
     except Exception as e:
         log.append(f"staging failed: {e}")
         note.append(f"staging FAILED: {e}")
@@ -359,8 +354,10 @@ def reroll(
     history.discard_pending(db)
     progress("scanning the library")
     library = library_loader(cfg.music_path)
-    return plan_and_stage(db, cfg, library, seed=seed, previous=previous, workout=workout,
-                          feature_of=feature_of, now=now, progress=progress)
+    manifest = plan_and_stage(db, cfg, library, seed=seed, previous=previous, workout=workout,
+                              feature_of=feature_of, now=now, progress=progress)
+    ytmirror.update(db, cfg, manifest)
+    return manifest
 
 
 def last_staged(db):

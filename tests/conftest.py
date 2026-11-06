@@ -11,3 +11,9 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("ffmpeg"):
             item.add_marker(skip)
+
+
+@pytest.fixture(autouse=True)
+def no_real_youtube(monkeypatch):
+    """Config's auth file is in your real home: no test may reach your YouTube account through it."""
+    monkeypatch.setattr("swimscrobble.ytmirror.open_client", lambda cfg: None)

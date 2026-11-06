@@ -6,9 +6,10 @@ only the resulting tokens are stored, in ~/.config/swimscrobble/garmin/. Later r
 from __future__ import annotations
 
 import functools
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .config import config_dir, secret
 from .planner import fmt_min
@@ -42,6 +43,13 @@ class Swim:
         dist = f", {self.distance_m:.0f} m" if self.distance_m else ""
         pace = f", {fmt_min(round(self.pace))}/100m" if self.pace else ""
         return f"{self.kind.replace('_', ' ')} {self.start:%a %H:%M}, {self.minutes:.0f} min{dist}{pace}"
+
+
+@dataclass(frozen=True)
+class Run:
+    activity_id: int
+    start_ts: float  # unix time
+    seconds: float  # elapsed: the music keeps playing through stops
 
 
 @dataclass(frozen=True)
@@ -113,6 +121,20 @@ def parse(activity: dict) -> Swim | None:
                 zones if any(zones) else ())
 
 
+def fetch_runs(start: str, end: str) -> list[dict]:
+    return _saved_client().get_activities_by_date(start, end, "running")
+
+
+def parse_run(activity: dict) -> Run | None:
+    kind = (activity.get("activityType") or {}).get("typeKey", "")
+    seconds = activity.get("elapsedDuration") or activity.get("duration")
+    gmt = activity.get("startTimeGMT")
+    if "running" not in kind or not seconds or not gmt or not activity.get("activityId"):
+        return None
+    start = datetime.fromisoformat(gmt).replace(tzinfo=timezone.utc)  # scrobbles are absolute times; a run abroad too
+    return Run(activity["activityId"], start.timestamp(), seconds)
+
+
 def parse_lengths(splits: dict, utc_offset: timedelta) -> list[Length]:
     """Swum lengths from an activity's splits (rests and drills without distance are left out)."""
     return [
@@ -128,11 +150,12 @@ def fetch_lengths(swim: Swim) -> list[Length]:
 
 
 SOUNDTRACK_MARK = "♫ Swam to"
+RUN_SOUNDTRACK_MARK = "♫ Ran to"
 
 
 def with_soundtrack(description: str, soundtrack: str) -> str:
     """Your own text stays; an earlier soundtrack (from a re-run) is replaced."""
-    own = description.split(SOUNDTRACK_MARK, 1)[0].rstrip()
+    own = re.split(f"{SOUNDTRACK_MARK}|{RUN_SOUNDTRACK_MARK}", description, maxsplit=1)[0].rstrip()
     return f"{own}\n\n{soundtrack}" if own else soundtrack
 
 

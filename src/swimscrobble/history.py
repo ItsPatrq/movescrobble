@@ -58,7 +58,22 @@ MIGRATIONS = [  # append only; PRAGMA user_version counts how many have run
       activity_id INTEGER, artist TEXT, title TEXT, lengths INTEGER, distance_m REAL, seconds REAL, hr REAL,
       swolf REAL, rel_speed REAL)"""),  # rel_speed: this track's speed over the whole swim's, minus 1
     _sql("CREATE TABLE IF NOT EXISTS lastfm_cache(key TEXT PRIMARY KEY, at REAL, body TEXT)"),  # taste graph data
+    _sql("CREATE TABLE IF NOT EXISTS run_soundtracks(activity_id INTEGER PRIMARY KEY, body TEXT, written_at REAL)"),
+    _sql("""CREATE TABLE IF NOT EXISTS yt_videos(
+      artist TEXT NOT NULL, title TEXT NOT NULL, video_id TEXT NOT NULL, PRIMARY KEY(artist, title))"""),
 ]
+
+
+def run_soundtrack(db, activity_id: int) -> str | None:
+    """The soundtrack last written onto this Garmin run."""
+    row = db.execute("SELECT body FROM run_soundtracks WHERE activity_id=?", (activity_id,)).fetchone()
+    return row["body"] if row else None
+
+
+def set_run_soundtrack(db, activity_id: int, body: str) -> None:
+    db.execute("INSERT OR REPLACE INTO run_soundtracks(activity_id, body, written_at) VALUES(?,?,?)",
+               (activity_id, body, time.time()))
+    db.commit()
 
 
 def connect(path: Path | None = None) -> sqlite3.Connection:
