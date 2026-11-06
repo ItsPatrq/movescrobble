@@ -84,8 +84,12 @@ def cmd_scrobble_pending(a) -> None:
     if not row:
         raise SystemExit("no pending session")
     now = datetime.now()
-    # what you pass wins; otherwise the Garmin swim, otherwise the plan
-    swim = None if (a.start or a.played_minutes) else flow.lookup_swim(garmin.finder(cfg), row, now, print)
+    # what you pass wins; otherwise the Garmin swim; without Garmin set up, the plan
+    explicit = a.start or a.played_minutes
+    find_swim = garmin.finder(cfg)
+    swim = None if explicit else flow.lookup_swim(find_swim, row, now, print)
+    if find_swim and not explicit and not swim:
+        raise SystemExit("no swim on Garmin since this playlist was staged; if you did swim, say when with --start")
     if swim:
         print(f"Garmin: {swim.describe()}")
     settled = flow.settle(json.loads(row["manifest"]), cfg, now, swim, a.played_minutes, parse_positions(a.skip),
@@ -409,23 +413,42 @@ def podcast_sync(cfg, db, only_if_logged_in: bool = True, progress=None):
 
 
 def garmin_sync(cfg, db):
-    """The Garmin step (swims, power songs, soundtrack), or None when Garmin is off or not authorised."""
+    """Time a just-scrobbled swim's tracks, write its soundtrack; None when Garmin is off or not authorised."""
     from . import garmin, power
 
     return (lambda: power.sync(db, cfg)) if garmin.finder(cfg) else None
 
 
+def activity_sync(cfg, db, days: int = 60, run_days: int = 30) -> list[str]:
+    """What the watch recorded, headphones or not: a swim settles the staged playlist, runs get their soundtrack."""
+    from . import flow, garmin, power, runs
+
+    lines: list[str] = []
+
+    def step(name: str, fn) -> None:
+        try:  # each works without the others; Garmin or Last.fm being down is reported, the next sync catches up
+            lines.append(f"{name}: {fn()}")
+        except Exception as e:
+            lines.append(f"{name} FAILED: {e}")
+
+    step("swim", lambda: flow.settle_swim(db, cfg, datetime.now(), garmin.swim_between, lines.append))
+    step("swim timing", lambda: power.sync(db, cfg, days=days))
+    if cfg.garmin_run_soundtrack:
+        step("runs", lambda: runs.sync(db, cfg, days=run_days))
+    return lines
+
+
 def cmd_garmin_sync(a) -> None:
-    from . import garmin, power
+    from . import garmin
 
     cfg = cfgmod.load()
     if not garmin.authorised():
         raise SystemExit("run `swimscrobble garmin-auth` first")
-    print(power.sync(history.connect(), cfg, days=a.days))
+    print("\n".join(activity_sync(cfg, history.connect(), a.days, a.run_days)))
 
 
 def cmd_on_connect(a) -> None:
-    from . import flow, garmin
+    from . import flow
 
     cfg = cfgmod.load()
     db = history.connect()
@@ -437,8 +460,7 @@ def cmd_on_connect(a) -> None:
         left = len(rep.playlist_missing)
         return f"+{len(rep.pool.added)} -{len(rep.pool.retired)}, {left} playlist tracks still missing"
 
-    for line in flow.on_connect(cfg, db, notify=notify, podcast_sync=podcast_sync(cfg, db), pool_sync=pool_sync,
-                                garmin_sync=garmin_sync(cfg, db), find_swim=garmin.finder(cfg)):
+    for line in flow.on_connect(cfg, db, notify=notify, podcast_sync=podcast_sync(cfg, db), pool_sync=pool_sync):
         print(line)
 
 
@@ -516,9 +538,10 @@ def main(argv=None) -> None:
     rc = sub.add_parser("recap", help="swims, minutes, discoveries over the last days")
     rc.add_argument("--days", type=int, default=7)
     rc.set_defaults(func=cmd_recap)
-    sub.add_parser("garmin-auth", help="log in to Garmin Connect (swim times)").set_defaults(func=cmd_garmin_auth)
-    gs = sub.add_parser("garmin-sync", help="read Garmin swims; time the tracks of scrobbled swims (power songs)")
+    sub.add_parser("garmin-auth", help="log in to Garmin Connect (swims and runs)").set_defaults(func=cmd_garmin_auth)
+    gs = sub.add_parser("garmin-sync", help="what the watch recorded: a swim scrobbles the playlist, runs get their tracks")
     gs.add_argument("--days", type=int, default=60)
+    gs.add_argument("--run-days", type=int, default=30)
     gs.set_defaults(func=cmd_garmin_sync)
     rs = sub.add_parser("recs", help="what the taste graph recommends next, and why")
     rs.add_argument("-n", type=int, default=25)

@@ -9,7 +9,7 @@ import json
 import shutil
 from pathlib import Path
 
-from . import audio, history
+from . import audio, history, ytmirror
 from .config import Config
 from .library import Track
 from .planner import staged_name
@@ -51,6 +51,7 @@ def _apply(cfg: Config, db, row, manifest: dict, tracks: list[dict], copy: dict[
     manifest["tracks"] = tracks
     db.execute("UPDATE sessions SET manifest=? WHERE id=?", (json.dumps(manifest, ensure_ascii=False), row["id"]))
     db.commit()
+    ytmirror.update(db, cfg, manifest)
     return manifest
 
 

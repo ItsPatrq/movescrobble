@@ -77,9 +77,9 @@ def test_exclude_recent_when_enough_left():
 def test_config_defaults_and_unknown_key(tmp_path):
     assert config.load(tmp_path / "none.toml").minutes == 60
     f = tmp_path / "c.toml"
-    f.write_text('minutes = 45\nauto_submit = true\n')
+    f.write_text('minutes = 45\nmax_podcasts = 3\n')
     c = config.load(f)
-    assert c.minutes == 45 and c.auto_submit
+    assert c.minutes == 45 and c.max_podcasts == 3
     f.write_text("bogus = 1\n")
     with pytest.raises(SystemExit):
         config.load(f)

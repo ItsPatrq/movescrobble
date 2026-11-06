@@ -1,12 +1,13 @@
+import json
 import plistlib
 from datetime import datetime
-from pathlib import Path
 
 import pytest
 
 from swimscrobble import flow, history, launchd
 from swimscrobble.config import Config
 from swimscrobble.energy import Features
+from swimscrobble.garmin import Swim
 from swimscrobble.library import Track
 from swimscrobble.pocketcasts import PodcastReport
 
@@ -55,45 +56,6 @@ def test_same_connection_is_not_reprocessed(env):
     assert run(cfg, db, lib)[0] == ["already handled this connection"]
 
 
-def test_reconnect_awaits_confirmation_without_auto_submit(env):
-    cfg, db, lib, vol = env
-    run(cfg, db, lib)
-    (vol / "SWIM PRO").rename(vol / "gone"); assert run(cfg, db, lib)[0] == ["device not connected"]
-    (vol / "gone").rename(vol / "SWIM PRO")
-    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 11, 0))
-    assert log == ["awaiting confirmation"]
-    assert history.pending_session(db) is not None  # not overwritten by a new plan
-    csv = next((Path(flow.config_dir()) / "pending").glob("*.csv")).read_text()
-    assert csv.count("\n") == 13  # header + only the 12 tracks that fit the 60 min swim, not all 24 staged
-
-
-def test_auto_submit_scrobbles_then_stages_next(env):
-    cfg, db, lib, vol = env
-    cfg.auto_submit = True
-    run(cfg, db, lib)
-    flow._set_handled(False)
-    sent = []
-    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 10, 0),
-                    lastfm_submit=lambda s: (sent.append(s) or len(s)))
-    assert len(sent) == 1 and len(sent[0]) == 12
-    # session ended at plug-in time: last scrobble starts before 10:00, first is 60 min earlier
-    assert sent[0][0].timestamp == datetime(2026, 10, 25, 9, 0) and sent[0][-1].timestamp < datetime(2026, 10, 25, 10)
-    assert log[0] == "scrobbled 12 tracks" and "staged session" in log[-1]
-    second = {p.name for p in (vol / "SWIM PRO" / "Music").iterdir()}
-    assert len(second) == 24  # old staged files cleared, new full buffer in (recent tracks top it up)
-    assert history.play_counts(db)
-
-
-def test_failed_submit_keeps_session_pending(env):
-    cfg, db, lib, _ = env
-    cfg.auto_submit = True
-    run(cfg, db, lib)
-    flow._set_handled(False)
-    def boom(s): raise RuntimeError("network")
-    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 10), lastfm_submit=boom)
-    assert log[0].startswith("failed") and history.pending_session(db) is not None
-
-
 def test_clear_staged_only_touches_prefixed_files(tmp_path):
     (tmp_path / "001 - a.mp3").write_bytes(b"x")
     (tmp_path / "01 - keep.mp3").write_bytes(b"x")
@@ -108,15 +70,6 @@ def test_podcast_failure_does_not_block_staging(env):
     assert any("podcasts failed" in l for l in log) and any("staged session" in l for l in log)
 
 
-def test_podcasts_sync_even_when_the_previous_session_blocks_staging(env):
-    cfg, db, lib, _ = env
-    run(cfg, db, lib)
-    flow._set_handled(False)
-    rep = PodcastReport(downloaded=["a", "b"], on_device=2)
-    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 11, 0), podcast_sync=lambda: rep)
-    assert log == ["podcasts: 2 podcasts (2 new)", "awaiting confirmation"]
-
-
 def test_launchd_plist_and_install(tmp_path):
     data = plistlib.loads(launchd.build_plist("/py", "/Volumes", tmp_path))
     assert data["WatchPaths"] == ["/Volumes"] and data["ProgramArguments"][-1] == "on-connect"
@@ -125,27 +78,6 @@ def test_launchd_plist_and_install(tmp_path):
     assert p.exists() and calls[-1][:3] == ["launchctl", "bootstrap", "gui/501"]
     launchd.uninstall(501, p, lambda cmd, **kw: calls.append(cmd))
     assert not p.exists()
-
-
-def test_pool_sync_runs_and_failure_does_not_block(env):
-    cfg, db, lib, _ = env
-    log, _ = run(cfg, db, lib, pool_sync=lambda: "+3 -0")
-    assert "pool sync: +3 -0" in log and any("staged session" in x for x in log)
-    flow._set_handled(False)
-    def bad(): raise RuntimeError("lastfm down")
-    cfg.auto_submit = True  # settle the first session so the second connection reaches the pool step
-    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 12), pool_sync=bad, lastfm_submit=len)
-    assert any("pool sync failed" in x for x in log)
-
-
-def test_plugging_in_again_straight_away_does_not_scrobble_a_swim_that_never_happened(env):
-    cfg, db, lib, vol = env
-    cfg.auto_submit = True
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 9, 0))
-    flow._set_handled(False)  # unplug / replug
-    sent = []
-    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 9, 5), lastfm_submit=lambda s: sent.append(s))
-    assert log == ["too soon"] and not sent and history.pending_session(db) is not None
 
 
 def test_reroll_replaces_the_files_and_discards_the_old_session_without_scrobbling(env):
@@ -178,37 +110,6 @@ def test_discard_pending(env):
     assert sid and history.pending_session(db) is None and history.discard_pending(db) is None
 
 
-def test_garmin_swim_scrobbles_its_real_start_and_length_without_asking(env):
-    from swimscrobble.garmin import Swim
-
-    cfg, db, lib, _ = env  # auto_submit is off: the Garmin swim alone is enough
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
-    flow._set_handled(False)
-    sent, windows = [], []
-    def find(since, until):
-        windows.append((since, until))
-        return Swim(datetime(2026, 10, 25, 8, 15), 30.0, "lap_swimming", 1500)
-    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 10, 0), find_swim=find,
-                    lastfm_submit=lambda s: (sent.append(s) or len(s)))
-    assert windows == [(datetime(2026, 10, 25, 7, 0), datetime(2026, 10, 25, 10, 0))]
-    # the music started warmup_minutes (8) before the watch and ran cooldown_minutes (11) after: 49 min from 8:07
-    assert len(sent[0]) == 10 and sent[0][0].timestamp == datetime(2026, 10, 25, 8, 7)
-    assert log[0].startswith("Garmin lap swimming") and "scrobbled 10 tracks" in log[0] and "staged session" in log[-1]
-    assert db.execute("SELECT swum_minutes FROM sessions WHERE status='scrobbled'").fetchone()[0] == 30  # the swim
-
-
-def test_no_garmin_swim_or_garmin_down_falls_back_to_asking(env):
-    cfg, db, lib, _ = env
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
-    flow._set_handled(False)
-    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 10, 0), find_swim=lambda a, b: None)
-    assert log == ["awaiting confirmation"]
-    flow._set_handled(False)
-    def down(a, b): raise RuntimeError("401")
-    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 10, 5), find_swim=down)
-    assert log == ["awaiting confirmation"] and any("Garmin lookup failed" in m for m in msgs)
-
-
 def test_one_notification_sums_up_the_connection(env):
     cfg, db, lib, _ = env
     log, msgs = run(cfg, db, lib, podcast_sync=lambda: PodcastReport(downloaded=["x"], on_device=3),
@@ -217,11 +118,135 @@ def test_one_notification_sums_up_the_connection(env):
     assert msgs[0].startswith("swimscrobble: 3 podcasts (1 new) · pool sync FAILED: lastfm down · staged 24 tracks")
 
 
-def test_on_connect_reports_each_step_for_the_spinner(env):
+def swim_at(hour=8, minute=15):
+    return Swim(datetime(2026, 10, 25, hour, minute), 30.0, "lap_swimming", 1500)
+
+
+def settled_session(cfg, db, lib, **kw):
+    """Stage at 7:00, then Garmin shows a swim."""
+    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    return flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), lambda a, b: swim_at(), **kw)
+
+
+def test_plugging_in_never_scrobbles_and_keeps_an_unsettled_playlist(env):
     cfg, db, lib, vol = env
+    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    first = history.pending_session(db)["id"]
+    before = sorted(p.name for p in (vol / "SWIM PRO" / "Music").iterdir())
+    flow._set_handled(False)
+    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 20, 0))
+    assert history.pending_session(db)["id"] == first
+    assert sorted(p.name for p in (vol / "SWIM PRO" / "Music").iterdir()) == before
+    assert db.execute("SELECT COUNT(*) c FROM plays").fetchone()["c"] == 0
+    assert "keeping session" in log[0] and msgs == ["swimscrobble: playlist unchanged"]
+
+
+def test_plugging_in_after_a_settled_swim_stages_the_next_playlist(env):
+    cfg, db, lib, _ = env
+    assert "scrobbled 10 tracks" in settled_session(cfg, db, lib, lastfm_submit=len)
+    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 11, 0))
+    assert any("staged session" in x for x in log) and history.pending_session(db) is not None
+
+
+def test_a_swim_scrobbles_its_real_start_and_length_without_headphones(env):
+    cfg, db, lib, vol = env
+    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    (vol / "SWIM PRO" / "Music").rename(vol / "gone")
+    (vol / "SWIM PRO").rmdir()
+    sent, windows = [], []
+
+    def find(since, until):
+        windows.append((since, until))
+        return swim_at()
+
+    out = flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), find, lastfm_submit=lambda x: (sent.append(x) or len(x)))
+    assert windows == [(datetime(2026, 10, 25, 7, 0), datetime(2026, 10, 25, 10, 0))]
+    # the music started warmup_minutes (8) before the watch and ran cooldown_minutes (11) after: 49 min from 8:07
+    assert len(sent[0]) == 10 and sent[0][0].timestamp == datetime(2026, 10, 25, 8, 7)
+    assert out.startswith("lap swimming") and "scrobbled 10 tracks" in out
+    assert db.execute("SELECT swum_minutes FROM sessions WHERE status='scrobbled'").fetchone()[0] == 30
+
+
+def test_without_a_swim_on_garmin_nothing_is_scrobbled(env):
+    cfg, db, lib, _ = env
+    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    sent = []
+    out = flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), lambda a, b: None, lastfm_submit=sent.append)
+    assert out == "no swim on Garmin since the playlist was staged"
+    assert not sent and history.pending_session(db) is not None
+
+
+def test_garmin_down_scrobbles_nothing_and_says_so(env):
+    cfg, db, lib, _ = env
+    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+
+    def down(a, b):
+        raise RuntimeError("401")
+
+    warned, sent = [], []
+    flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), down, warned.append, lastfm_submit=sent.append)
+    assert not sent and history.pending_session(db) is not None and "Garmin lookup failed: 401" in warned[0]
+
+
+def test_failed_submit_keeps_session_pending(env):
+    cfg, db, lib, _ = env
+
+    def boom(_s):
+        raise RuntimeError("network")
+
+    assert settled_session(cfg, db, lib, lastfm_submit=boom) == "scrobbling FAILED: network"
+    assert history.pending_session(db) is not None
+
+
+def test_nothing_staged_is_not_an_error(env):
+    cfg, db, _, _ = env
+    assert flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), lambda a, b: swim_at()) == (
+        "no staged playlist waiting for a swim")
+
+
+def test_podcasts_sync_even_when_the_playlist_stays(env):
+    cfg, db, lib, _ = env
+    run(cfg, db, lib)
+    flow._set_handled(False)
+    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 11, 0),
+                    podcast_sync=lambda: PodcastReport(downloaded=["a", "b"], on_device=2))
+    assert log[0] == "podcasts: 2 podcasts (2 new)" and "keeping session" in log[1]
+    assert "2 podcasts (2 new)" in msgs[0]
+
+
+def test_pool_sync_failure_does_not_block_staging(env):
+    cfg, db, lib, _ = env
+
+    def bad():
+        raise RuntimeError("lastfm down")
+
+    log, _ = run(cfg, db, lib, pool_sync=bad)
+    assert any("pool sync failed" in x for x in log) and any("staged session" in x for x in log)
+
+
+def test_on_connect_reports_each_step_for_the_spinner(env):
+    cfg, db, lib, _ = env
     steps = []
     run(cfg, db, lib, podcast_sync=lambda: "0 podcasts", pool_sync=lambda: "+0 -0", progress=steps.append)
-    assert steps[:5] == ["syncing podcasts", "settling the last swim", "syncing Last.fm history and the pool",
-                         "scanning the library", "removing the previous playlist"]
-    n = sum(s.startswith("copying") for s in steps)
-    assert n and steps[-1] == f"copying to the headphones {n}/{n}" and f"levelling tracks {n}/{n}" in steps
+    assert steps[:4] == ["syncing podcasts", "syncing Last.fm history and the pool", "scanning the library",
+                         "removing the previous playlist"]
+    n = sum(x.startswith("copying") for x in steps)
+    assert n and f"copying to the headphones {n}/{n}" in steps and f"levelling tracks {n}/{n}" in steps
+    assert steps[-1] == "updating the YouTube Music playlist"
+
+
+def test_youtube_gets_the_staged_playlist_and_cannot_stop_staging(env):
+    cfg, db, lib, _ = env
+    seen = []
+    log, msgs = run(cfg, db, lib, mirror=lambda m: (seen.append(m) or "YouTube playlist FAILED: down"))
+    assert seen[0]["id"] == history.pending_session(db)["id"]
+    assert "YouTube playlist FAILED: down" in log and "YouTube playlist FAILED: down" in msgs[0]
+
+
+def test_youtube_catches_up_when_the_playlist_stays(env):
+    cfg, db, lib, _ = env
+    run(cfg, db, lib)
+    flow._set_handled(False)
+    seen = []
+    run(cfg, db, lib, now=datetime(2026, 10, 25, 11), mirror=lambda m: (seen.append(m) or ""))
+    assert seen[0]["tracks"] == json.loads(history.pending_session(db)["manifest"])["tracks"]

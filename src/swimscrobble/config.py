@@ -35,7 +35,6 @@ class Config:
     history_days: int = 365  # how far back the first Last.fm history pull goes (later pulls are incremental)
     minutes: float = 60  # how long you swim: only this much of the playlist is scrobbled
     playlist_minutes: float = 120  # length of the staged playlist (the rest is buffer)
-    auto_submit: bool = False  # on-connect: submit scrobbles without asking
     min_swim_gap_minutes: float = 20  # a session staged less than this long ago cannot have been swum
     session_offset_minutes: float = 0  # gap between swim ending and plugging in
     ytm_playlist: str = ""
@@ -48,10 +47,13 @@ class Config:
     podcast_trim_silence: bool = True  # cut pauses longer than ~0.6 s down to 0.3 s
     loudness_target: float = -11  # LUFS every staged track is brought to (0 = copy files untouched; TOML has no null)
     garmin: bool = False  # take swim start + length from Garmin Connect (run `swimscrobble garmin-auth` once)
-    garmin_auto_submit: bool = True  # a swim found on Garmin is proof enough: scrobble it without asking
     warmup_minutes: float = 8  # with Garmin: the music starts this long before the watch (shower, warm-up)
     cooldown_minutes: float = 11  # with Garmin: and keeps playing this long after it stops
-    garmin_soundtrack: bool = True  # write what you swam to into the Garmin activity's description (shows on Strava)
+    garmin_soundtrack: bool = True  # write what you swam to into the Garmin activity's description
+    garmin_run_soundtrack: bool = True  # write what Last.fm says you played on a run into its Garmin description
+    ytm_mirror: bool = True  # keep a YouTube Music playlist equal to the one on the headphones (needs `ytm-auth`)
+    ytm_mirror_title: str = "swimscrobble: on the headphones"
+    ytm_mirror_privacy: str = "PRIVATE"  # or UNLISTED, PUBLIC
     arc: bool = False
     mix_weights: dict[str, float] = field(default_factory=lambda: {
         "obsession": 0.40,  # played in the last 30 days (+ your playlist)

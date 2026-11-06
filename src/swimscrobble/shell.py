@@ -42,7 +42,8 @@ HELP = """\
 [bold]u[/] leftovers     staged files left on the headphones by a discarded session: use them again, or remove them
 [bold]v[/] recap         the last 7 days of swimming
 [bold]o[/] podcasts      newest unplayed episode per subscription to the headphones
-[bold]e[/] on-connect    run the whole automatic routine now (settle, sync, stage)
+[bold]n[/] garmin        what the watch recorded: a swim scrobbles the playlist, runs get their tracks
+[bold]e[/] on-connect    sync the headphones now (podcasts, next playlist once this one is settled)
 [bold]g[/] agent         install / remove the launchd agent that runs the routine when you plug in
 [bold]q[/] quit"""
 
@@ -67,6 +68,7 @@ class Actions:
     mark_played: Callable[[list[dict]], str] = lambda eps: ""  # tell Pocket Casts, then sync again
     love: Callable[[list[tuple[str, str]]], str] = lambda tracks: ""  # Last.fm love (+ your playlist if authorised)
     garmin_sync: Callable[[], str] | None = None  # time the scrobbled swim's tracks, write its soundtrack
+    activity_sync: Callable[[], list[str]] | None = None  # settle a swim found on Garmin, write run soundtracks
     recommend: Callable[[], object] | None = None  # build the taste graph (taste.Taste) with the saved tuning
     preview_file: Callable[[Track], None] | None = None  # play a clip of a local file
     preview_song: Callable[[str, str], bool] | None = None  # play a clip from YouTube Music; False = not found
@@ -146,7 +148,7 @@ class Shell:
 
     def hint(self, d) -> str:
         if d.staged and d.staged["age_hours"] * 60 >= self.cfg.min_swim_gap_minutes and d.device_connected:
-            return "Next: swimming? plug in afterwards and press c to scrobble it · r re-rolls the playlist"
+            return "Next: swam? n reads it from Garmin and scrobbles · r re-rolls the playlist"
         if not d.staged:
             return "Next: r stages a playlist on the headphones" if d.device_connected else "Next: connect the headphones, then r"
         return "Keys: p playlist · r reroll · a add track · s stats · w wishlist · y sync · c scrobble · ? help · q quit"
@@ -656,15 +658,24 @@ class Shell:
         elif self.yes(f"Remove the {n} leftover tracks of session {sid} from the headphones?", default=True):
             self.say(f"[green]removed {flow.clear_orphans(self.cfg, self.db)} files[/]")
 
+    def activities(self) -> None:
+        if not self.act.activity_sync:
+            self.say("[yellow]Garmin is not set up: set garmin = true and run swimscrobble garmin-auth.[/]")
+            return
+        with self.busy("reading your swims and runs from Garmin Connect"):
+            lines = self.act.activity_sync()
+        for line in lines:
+            self.say(line, markup=False)
+
     def on_connect(self) -> None:
-        with self.busy("running the on-connect routine"):
+        with self.busy("syncing the headphones"):
             log = self.act.on_connect()
         for line in log:
             self.say(line)
 
     def agent(self) -> None:
         on = self.act.agent_installed()
-        self.say("The agent runs the whole routine automatically whenever the headphones are plugged in "
+        self.say("The agent syncs the headphones automatically whenever they are plugged in "
                  f"(currently [bold]{'installed' if on else 'not installed'}[/]).")
         if self.yes(f"{'Remove' if on else 'Install'} it?"):
             self.act.agent_set(not on)
@@ -675,11 +686,11 @@ class Shell:
             "p": self.playlist, "r": self.reroll, "a": self.add_track, "s": self.stats, "w": self.wishlist,
             "y": self.sync, "c": self.scrobble, "k": self.skip, "u": self.leftovers,
             "o": self.podcasts, "v": self.recap, "b": self.blocklist, "d": self.discover,
-            "e": self.on_connect, "g": self.agent,
+            "e": self.on_connect, "g": self.agent, "n": self.activities,
             "?": lambda: self.say(HELP), "h": lambda: self.say(HELP),
         }
         names = {"playlist": "p", "reroll": "r", "add": "a", "stats": "s", "wishlist": "w", "sync": "y", "scrobble": "c",
-                 "skip": "k", "discover": "d", "podcasts": "o", "blocklist": "b", "recap": "v", "on-connect": "e",
+                 "skip": "k", "discover": "d", "podcasts": "o", "blocklist": "b", "recap": "v", "on-connect": "e", "garmin": "n",
                  "agent": "g", "help": "?", "quit": "q", "exit": "q"}
         if self.keys:
             return self.run_keys(handlers)
@@ -721,7 +732,8 @@ class Shell:
         Item("v", "Recap", "the last 7 days of swimming"),
         Item("b", "Blocklist", "artists and tracks you never want to hear"),
         Item("o", "Podcasts", "newest unplayed episodes"),
-        Item("e", "On-connect", "run the whole routine now"),
+        Item("n", "Garmin", "swims and runs the watch recorded"),
+        Item("e", "On-connect", "sync the headphones now"),
         Item("g", "Agent", "install / remove the plug-in agent"),
         Item("?", "Help", "what everything does"),
         Item("q", "Quit"),
@@ -1216,8 +1228,7 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
 
     def on_connect() -> list[str]:
         return flow.on_connect(cfg, db, notify=cli.notify, pool_sync=lambda: sync(cfg.auto_download), force=True,
-                               find_swim=garmin.finder(cfg), progress=progress, garmin_sync=cli.garmin_sync(cfg, db),
-                               podcast_sync=cli.podcast_sync(cfg, db, progress=progress))
+                               progress=progress, podcast_sync=cli.podcast_sync(cfg, db, progress=progress))
 
     def submit(scrobbles: list) -> str:
         return flow.describe_sent(flow.send_scrobbles(scrobbles, cfg), scrobbles, cfg)
@@ -1255,6 +1266,7 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
         podcasts=podcasts, on_connect=on_connect, submit=submit, mark_played=mark_played, love=love,
         podcast_episodes=lambda: pocketcasts.on_device(db), find_swim=garmin.finder(cfg),
         garmin_sync=cli.garmin_sync(cfg, db),
+        activity_sync=(lambda: cli.activity_sync(cfg, db)) if garmin.finder(cfg) else None,
         recommend=recommend if cfg.lastfm_user else None, show_graph=show_graph, stop_preview=player.stop,
         preview_file=lambda t: player.play_file(t.path, t.duration), preview_song=player.play_song,
         agent_installed=lambda: Path(launchd.PLIST).exists(), agent_set=agent_set,
