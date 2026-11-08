@@ -92,8 +92,20 @@ class Page:
         )
         return r[0] + 4, r[1] + 4
 
+    def box(self, target) -> dict:
+        """Where an element is, read once the page has settled: the overlay is drawn again after every preview, and an
+        element read while that happens is briefly not there."""
+        locator = self.id(target) if isinstance(target, str) else target
+        for _ in range(20):
+            self.idle()
+            found = locator.bounding_box()
+            if found:
+                return found
+            self.page.wait_for_timeout(100)
+        raise AssertionError(f"{target} never settled on the page")
+
     def centre(self, name: str) -> tuple[float, float]:
-        box = self.id(name).bounding_box()
+        box = self.box(name)
         return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
 
     def frame_to_screen(self, x: float, y: float) -> tuple[float, float]:
@@ -169,7 +181,7 @@ def test_dragging_a_picture_pans_only_its_photo_and_saves(ed):
     at = ed.piece_index(lambda p: not p["body"] and p["shape"]["type"] != "full")
     ed.click_piece(at)
     before = ed.recipe()
-    box = ed.id(f"piece-{at}").bounding_box()
+    box = ed.box(f"piece-{at}")
     start = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     assert ed.page.evaluate("([x, y]) => document.elementFromPoint(x, y).dataset.role", list(start)) in (
         "piece",
@@ -191,7 +203,7 @@ def test_dragging_a_picture_pans_only_its_photo_and_saves(ed):
 def test_the_photo_cannot_slide_off_its_shape_unless_you_say_so(ed):
     at = body_of(ed)
     ed.click_piece(at)
-    box = ed.id(f"piece-{at}").bounding_box()
+    box = ed.box(f"piece-{at}")
     centre = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     ed.drag(centre, (900, 0))
     m = ed.recipe()["pieces"][at]["map"]
@@ -202,7 +214,7 @@ def test_the_photo_cannot_slide_off_its_shape_unless_you_say_so(ed):
 def test_the_wheel_zooms_about_the_pointer_and_shift_wheel_turns(ed):
     at = body_of(ed)
     ed.click_piece(at)
-    box = ed.id(f"piece-{at}").bounding_box()
+    box = ed.box(f"piece-{at}")
     centre = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     ed.page.mouse.move(*centre)
     k = ed.recipe()["pieces"][at]["map"]["k"]
@@ -238,7 +250,7 @@ def test_a_seam_moves_both_pictures_that_share_it(ed):
     ed.click_piece(at)
     before = ed.recipe()
     edge = ed.page.locator('[data-testid="handle-edge-2"]')  # the bottom edge of a top row
-    box = edge.bounding_box()
+    box = ed.box(edge)
     ed.drag((box["x"] + box["width"] / 2, box["y"] + box["height"] / 2), (0, 30))
     after = ed.recipe()
     changed = [i for i, p in enumerate(after["pieces"]) if p["shape"] != before["pieces"][i]["shape"]]
@@ -251,7 +263,7 @@ def test_seams_can_move_alone(ed):
     ed.id("link-seams").uncheck()
     ed.click_piece(at)
     before = ed.recipe()
-    box = ed.page.locator('[data-testid="handle-edge-2"]').bounding_box()
+    box = ed.box(ed.page.locator('[data-testid="handle-edge-2"]'))
     ed.drag((box["x"] + box["width"] / 2, box["y"] + box["height"] / 2), (0, 30))
     after = ed.recipe()
     assert [i for i, p in enumerate(after["pieces"]) if p["shape"] != before["pieces"][i]["shape"]] == [at]
@@ -262,7 +274,7 @@ def test_dragging_a_shape_takes_its_picture_along_unless_told_not_to(ed):
     ed.id("tool-shape").click()
     ed.click_piece(at)
     before = ed.recipe()["pieces"][at]
-    box = ed.id(f"piece-{at}").bounding_box()
+    box = ed.box(f"piece-{at}")
     centre = (box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
     ed.drag(centre, (20, 0))
     after = ed.recipe()["pieces"][at]
@@ -499,7 +511,7 @@ def test_the_crop_view_moves_and_zooms_the_photo(ed):
     i = ed.piece_index(lambda p: not p["body"] and p["shape"]["type"] != "full")
     ed.click_piece(i)
     before = ed.recipe()["pieces"][i]["map"]
-    box = ed.id("crop-window").bounding_box()
+    box = ed.box("crop-window")
     x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
     ed.page.mouse.move(x, y)
     ed.page.mouse.down()
@@ -507,7 +519,7 @@ def test_the_crop_view_moves_and_zooms_the_photo(ed):
     ed.page.mouse.up()
     moved = ed.saved()["pieces"][i]["map"]
     assert moved["cx"] != before["cx"] and moved["cy"] != before["cy"] and moved["k"] == pytest.approx(before["k"])
-    corner = ed.id("crop-zoom").bounding_box()
+    corner = ed.box("crop-zoom")
     cx, cy = corner["x"] + corner["width"] / 2, corner["y"] + corner["height"] / 2
     ed.page.mouse.move(cx, cy)
     ed.page.mouse.down()
