@@ -1,6 +1,6 @@
 import json
 import plistlib
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -10,6 +10,13 @@ from movescrobble.energy import Features
 from movescrobble.garmin import Swim
 from movescrobble.library import Track
 from movescrobble.pocketcasts import PodcastReport
+
+# A day two days back, wherever the clock is: Last.fm takes only the last 14 days, so a fixed date stops working
+DAY = (datetime.now() - timedelta(days=2)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def day(hour: int, minute: int = 0) -> datetime:
+    return DAY.replace(hour=hour, minute=minute)
 
 
 @pytest.fixture
@@ -29,7 +36,8 @@ def env(tmp_path, monkeypatch):
     return cfg, db, lib, vol
 
 
-def run(cfg, db, lib, now=datetime(2026, 10, 25, 9, 0), **kw):
+def run(cfg, db, lib, now=None, **kw):
+    now = now or day(9, 0)
     msgs = []
     log = flow.on_connect(cfg, db, now, msgs.append, library_loader=lambda _: lib,
                           feature_of=lambda t: Features(120, -7, 150, 0.6, 0.8), **kw)
@@ -119,22 +127,22 @@ def test_one_notification_sums_up_the_connection(env):
 
 
 def swim_at(hour=8, minute=15):
-    return Swim(datetime(2026, 10, 25, hour, minute), 30.0, "lap_swimming", 1500)
+    return Swim(day(hour, minute), 30.0, "lap_swimming", 1500)
 
 
 def settled_session(cfg, db, lib, **kw):
     """Stage at 7:00, then Garmin shows a swim."""
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
-    return flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), lambda a, b: swim_at(), **kw)
+    run(cfg, db, lib, now=day(7, 0))
+    return flow.settle_swim(db, cfg, day(10), lambda a, b: swim_at(), **kw)
 
 
 def test_plugging_in_never_scrobbles_and_keeps_an_unsettled_playlist(env):
     cfg, db, lib, vol = env
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    run(cfg, db, lib, now=day(7, 0))
     first = history.pending_session(db)["id"]
     before = sorted(p.name for p in (vol / "SWIM PRO" / "Music").iterdir())
     flow._set_handled(False)
-    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 20, 0))
+    log, msgs = run(cfg, db, lib, now=day(20, 0))
     assert history.pending_session(db)["id"] == first
     assert sorted(p.name for p in (vol / "SWIM PRO" / "Music").iterdir()) == before
     assert db.execute("SELECT COUNT(*) c FROM plays").fetchone()["c"] == 0
@@ -144,13 +152,13 @@ def test_plugging_in_never_scrobbles_and_keeps_an_unsettled_playlist(env):
 def test_plugging_in_after_a_settled_swim_stages_the_next_playlist(env):
     cfg, db, lib, _ = env
     assert "scrobbled 10 tracks" in settled_session(cfg, db, lib, lastfm_submit=len)
-    log, _ = run(cfg, db, lib, now=datetime(2026, 10, 25, 11, 0))
+    log, _ = run(cfg, db, lib, now=day(11, 0))
     assert any("staged session" in x for x in log) and history.pending_session(db) is not None
 
 
 def test_a_swim_scrobbles_its_real_start_and_length_without_headphones(env):
     cfg, db, lib, vol = env
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    run(cfg, db, lib, now=day(7, 0))
     (vol / "SWIM PRO" / "Music").rename(vol / "gone")
     (vol / "SWIM PRO").rmdir()
     sent, windows = [], []
@@ -159,32 +167,32 @@ def test_a_swim_scrobbles_its_real_start_and_length_without_headphones(env):
         windows.append((since, until))
         return swim_at()
 
-    out = flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), find, lastfm_submit=lambda x: (sent.append(x) or len(x)))
-    assert windows == [(datetime(2026, 10, 25, 7, 0), datetime(2026, 10, 25, 10, 0))]
+    out = flow.settle_swim(db, cfg, day(10), find, lastfm_submit=lambda x: (sent.append(x) or len(x)))
+    assert windows == [(day(7, 0), day(10, 0))]
     # the music started warmup_minutes (8) before the watch and ran cooldown_minutes (11) after: 49 min from 8:07
-    assert len(sent[0]) == 10 and sent[0][0].timestamp == datetime(2026, 10, 25, 8, 7)
+    assert len(sent[0]) == 10 and sent[0][0].timestamp == day(8, 7)
     assert out.startswith("lap swimming") and "scrobbled 10 tracks" in out
     assert db.execute("SELECT swum_minutes FROM sessions WHERE status='scrobbled'").fetchone()[0] == 30
 
 
 def test_without_a_swim_on_garmin_nothing_is_scrobbled(env):
     cfg, db, lib, _ = env
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    run(cfg, db, lib, now=day(7, 0))
     sent = []
-    out = flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), lambda a, b: None, lastfm_submit=sent.append)
+    out = flow.settle_swim(db, cfg, day(10), lambda a, b: None, lastfm_submit=sent.append)
     assert out == "no swim on Garmin since the playlist was staged"
     assert not sent and history.pending_session(db) is not None
 
 
 def test_garmin_down_scrobbles_nothing_and_says_so(env):
     cfg, db, lib, _ = env
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 7, 0))
+    run(cfg, db, lib, now=day(7, 0))
 
     def down(a, b):
         raise RuntimeError("401")
 
     warned, sent = [], []
-    flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), down, warned.append, lastfm_submit=sent.append)
+    flow.settle_swim(db, cfg, day(10), down, warned.append, lastfm_submit=sent.append)
     assert not sent and history.pending_session(db) is not None and "Garmin lookup failed: 401" in warned[0]
 
 
@@ -200,7 +208,7 @@ def test_failed_submit_keeps_session_pending(env):
 
 def test_nothing_staged_is_not_an_error(env):
     cfg, db, _, _ = env
-    assert flow.settle_swim(db, cfg, datetime(2026, 10, 25, 10), lambda a, b: swim_at()) == (
+    assert flow.settle_swim(db, cfg, day(10), lambda a, b: swim_at()) == (
         "no staged playlist waiting for a swim")
 
 
@@ -208,7 +216,7 @@ def test_podcasts_sync_even_when_the_playlist_stays(env):
     cfg, db, lib, _ = env
     run(cfg, db, lib)
     flow._set_handled(False)
-    log, msgs = run(cfg, db, lib, now=datetime(2026, 10, 25, 11, 0),
+    log, msgs = run(cfg, db, lib, now=day(11, 0),
                     podcast_sync=lambda: PodcastReport(downloaded=["a", "b"], on_device=2))
     assert log[0] == "podcasts: 2 podcasts (2 new)" and "keeping session" in log[1]
     assert "2 podcasts (2 new)" in msgs[0]
@@ -248,5 +256,5 @@ def test_youtube_catches_up_when_the_playlist_stays(env):
     run(cfg, db, lib)
     flow._set_handled(False)
     seen = []
-    run(cfg, db, lib, now=datetime(2026, 10, 25, 11), mirror=lambda m: (seen.append(m) or ""))
+    run(cfg, db, lib, now=day(11), mirror=lambda m: (seen.append(m) or ""))
     assert seen[0]["tracks"] == json.loads(history.pending_session(db)["manifest"])["tracks"]
