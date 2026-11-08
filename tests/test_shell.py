@@ -429,3 +429,22 @@ def test_discover_in_line_mode_lists_previews_and_steers(env):
     t = text(out)
     assert "In your files" in t and "To get" in t and "New Artist - Fresh Song" in t
     assert played == [("New Artist", "Fresh Song")] and Tuning.load(db).more == ["Artist5"]
+
+
+def test_collage_opens_the_chosen_run_until_you_are_done(env, tmp_path):
+    runs = [tmp_path / "newer", tmp_path / "older"]
+    for p in runs:
+        p.mkdir()
+    started = []
+    shell, fake, out = make(env, "m", "2", "", "q")
+    shell.act.collage_runs = lambda: runs
+    shell.act.edit_collage = lambda folder: (started.append(folder), (lambda: started.append("stopped"), "http://x"))[1]
+    shell.run()
+    assert started == [runs[1], "stopped"]
+    assert "Editing older" in text(out)
+
+
+def test_collage_without_runs_says_how_to_make_one(env):
+    shell, _, out = make(env, "collage", "q")
+    shell.run()
+    assert "No collages yet" in text(out)
