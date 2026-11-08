@@ -1048,7 +1048,16 @@ function panelType(panel) {
   panel.append(chips);
   panel.append(el("div", { className: "line" }, button("+ Block", () => addBlock(["Type here"]), "add-block"), button("Find a calm place", () => place("text"), "place-text"),
     button("Card layout", () => serverEdit("/api/card", {}), "card")));
-  panel.append(el("p", { className: "hint", textContent: "Card layout: the run's name on top, distance, time and pace in a column, the route in the circle. In a column block, each line is LABEL|figure|unit." }));
+  if (S.recipe.badge) {
+    const b = S.recipe.badge;
+    const word = el("input", { type: "text", value: b.text, maxLength: 24, ariaLabel: "Badge" });
+    word.dataset.testid = "badge-text";
+    word.oninput = () => { b.text = word.value; touched(); };
+    word.onchange = () => commit();
+    panel.append(el("div", { className: "line" }, el("label", { textContent: "Badge" }), word,
+      check("Show", () => b.visible !== false, (v) => { b.visible = v; }, "badge-show")));
+  }
+  panel.append(el("p", { className: "hint", textContent: "Card layout: distance, time and pace in a column, the route in the circle, a badge on the right edge. In a column block, each line is LABEL|figure|unit." }));
   blocks.forEach((block, i) => {
     const on = S.kind === "text" && S.sel === i;
     const head = button(`${on ? "▾" : "▸"} ${block.lines[0] || "(empty)"}`, () => { select("text", on ? -1 : i); renderPanel(); drawOverlay(); }, `block-${i}`, "link");

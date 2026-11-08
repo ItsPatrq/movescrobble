@@ -66,6 +66,7 @@ FONTS = [
     "/System/Library/Fonts/Supplemental/Futura.ttc",
     "/System/Library/Fonts/HelveticaNeue.ttc",
 ]
+BADGE_FONTS = ["/System/Library/Fonts/Supplemental/Arial Bold.ttf", *FONTS]  # a plain bold sans
 CARD_FONTS = [  # condensed and bold: a column of figures reads at a glance
     "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial Narrow Bold.ttf",
@@ -1013,6 +1014,10 @@ def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(path, size) if path and Path(path).exists() else ImageFont.load_default(size)
 
 
+def badge_font() -> str:
+    return next((f for f in BADGE_FONTS if Path(f).exists()), "")
+
+
 def card_font() -> str:
     return next((f for f in CARD_FONTS if Path(f).exists()), "")
 
@@ -1665,6 +1670,7 @@ CARD_ROUTE_FILL = 0.79  # of the circle's diameter, along the route's diagonal
 CARD_STATS_SIZE = 84
 CARD_STATS_OVERLAP = 30  # how far the column may reach up into the leg photo: over the shoes, a little
 CARD_BOTTOM = 200  # the column ends at least this far from the bottom edge
+BADGE_BOX = (W - 96, 168, 96, 296)  # x, y, w, h: a tab against the right edge, near the top
 
 
 def _circle_of(recipe: dict) -> tuple[float, float, float] | None:
@@ -1688,6 +1694,27 @@ def _legs_bottom(recipe: dict) -> float | None:
     return float(rows[-1] + 1) if len(rows) else None
 
 
+def _badge_layers(badge: dict, scale: float) -> tuple[np.ndarray, np.ndarray]:
+    """(the tab, the word on it) as frame-sized alphas: the word runs down the tab, top to bottom, filling it."""
+    fw, fh = _size(scale)
+    x0, y0 = round(badge["x"] * scale), round(badge["y"] * scale)
+    w, h = max(1, round(badge["w"] * scale)), max(1, round(badge["h"] * scale))
+    tab = Image.new("L", (fw, fh), 0)
+    ImageDraw.Draw(tab).rectangle([x0, y0, x0 + w - 1, y0 + h - 1], fill=255)
+    size = max(4, round(w * 0.62))
+    word = badge["text"].upper()
+    font = _font(badge.get("font", ""), size)
+    while size > 4 and ImageDraw.Draw(tab).textlength(word, font=font) > h * 0.84:
+        size -= 1
+        font = _font(badge.get("font", ""), size)
+    line = Image.new("L", (round(ImageDraw.Draw(tab).textlength(word, font=font)) + 4, round(size * 1.4)), 0)
+    ImageDraw.Draw(line).text((2, size * 0.7), word, fill=255, font=font, anchor="lm")
+    line = line.rotate(-90, expand=True)  # reads from the top down
+    ink = Image.new("L", (fw, fh), 0)
+    ink.paste(line, (x0 + (w - line.width) // 2, y0 + (h - line.height) // 2))
+    return np.asarray(tab, dtype=np.float32) / 255, np.asarray(ink, dtype=np.float32) / 255
+
+
 def card_route(recipe: dict, points: list[list[float]], aspect: float, store: PhotoStore | None = None) -> dict:
     """The route for a card: filling the circle when the collage has one, thick and white with a dark edge; otherwise
     where the picture is calmest."""
@@ -1706,9 +1733,9 @@ def card_route(recipe: dict, points: list[list[float]], aspect: float, store: Ph
 
 
 def apply_card(recipe: dict, lines: list[str], title: str = "", route: dict | None = None,
-               store: PhotoStore | None = None) -> dict:
-    """The recipe as a card: `title` at the top, `lines` (LABEL|figure|unit) as a column at the bottom left, and
-    `route` ({points, aspect}) in the circle. Pieces, look and reel stay as they were."""
+               store: PhotoStore | None = None, badge: str = "") -> dict:
+    """The recipe as a card: `lines` (LABEL|figure|unit) as a column at the bottom left, `route` ({points, aspect}) in
+    the circle, `badge` down a white tab on the right edge, `title` at the top if given. Pieces, look and reel stay."""
     font = card_font()
     common = {"font": font, "rotate": 0, "colour": list(TYPE_COLOUR), "opacity": 1.0, "edge": 0.8, "pool": 0.55}
     blocks = []
@@ -1724,6 +1751,12 @@ def apply_card(recipe: dict, lines: list[str], title: str = "", route: dict | No
         stats["y"] = min(legs - CARD_STATS_OVERLAP, lowest) if legs is not None else H - SAFE_BOTTOM - tall - 28
         blocks.append(stats)
     recipe["text"] = blocks
+    if badge:
+        x, y, w, h = BADGE_BOX
+        recipe["badge"] = {"text": badge, "font": badge_font(), "x": x, "y": y, "w": w, "h": h,
+                           "tab": [255, 255, 255], "ink": [18, 18, 18], "visible": True}
+    else:
+        recipe.pop("badge", None)
     if route and route.get("points"):
         recipe["route"] = card_route(recipe, route["points"], route["aspect"], store)
     return recipe
@@ -1873,6 +1906,11 @@ def paint(recipe: dict, store: PhotoStore, scale: float = 1.0, overlays: bool = 
             final = _darken_under(final, over, 4, block.get("edge", 0.7), 34, block.get("pool", 0.5), scale)
             colour = np.array(block["colour"], dtype=np.float32) / 255
             final = final * (1 - over[..., None]) + colour[None, None] * over[..., None]
+        badge = recipe.get("badge")
+        if badge and badge.get("visible", True):
+            tab, ink = _badge_layers(badge, scale)
+            for alpha, colour in ((tab, badge["tab"]), (ink, badge["ink"])):
+                final = final * (1 - alpha[..., None]) + (np.array(colour, dtype=np.float32) / 255)[None, None] * alpha[..., None]
     return Composed(final, graded_base, start, share, params.get("grain", 0.0), under, under_mask, under_start, owner)
 
 
@@ -1884,8 +1922,8 @@ def render_still(recipe: dict, store: PhotoStore, scale: float = 1.0) -> Image.I
     return still_of(paint(recipe, store, scale), recipe)
 
 
-def make_card(folder: Path, version: str, title: str | None = None, data: ActivityData | None = None,
-              reel: bool = True) -> list[Path]:
+def make_card(folder: Path, version: str, title: str = "", data: ActivityData | None = None,
+              reel: bool = True, badge: str = "GARMIN") -> list[Path]:
     """One version of a run as a card, saved as a new version beside it (`card-<version>`, in `edited/`, so the editor
     opens it) and exported as a still and, with ffmpeg, a reel. Returns what was written."""
     listed = json.loads((folder / "versions.json").read_text()) if (folder / "versions.json").exists() else {}
@@ -1896,13 +1934,12 @@ def make_card(folder: Path, version: str, title: str | None = None, data: Activi
     recipe = json.loads(found.read_text())
     saved = listed.get("card") or {}
     lines = data.card_lines() if data else saved.get("lines") or card_lines_from(listed.get("stats") or {})
-    title = title if title is not None else (data.name if data else saved.get("title", ""))
     route = route_from(data.route) if data and data.route else route_of(recipe)
     if route is None:  # this version drew none: the run's others show the same route
         route = next((r for p in sorted((folder / "recipes").glob("*.json")) if (r := route_of(json.loads(p.read_text())))),
                      None)
     store = PhotoStore()
-    recipe = apply_card(recipe, lines, title, route, store)
+    recipe = apply_card(recipe, lines, title, route, store, badge)
     recipe["id"] = f"card-{version}"
     (folder / "edited").mkdir(exist_ok=True)
     written = [folder / "edited" / f"{recipe['id']}.json"]

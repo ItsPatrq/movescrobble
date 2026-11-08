@@ -924,3 +924,16 @@ def test_a_column_of_stats_has_small_labels_over_large_figures():
     gap = np.nonzero(np.diff(rows) > 1)[0]
     label, figure = rows[gap[0]] - rows[0] + 1, rows[-1] - rows[gap[0] + 1] + 1  # the first run of rows, then the rest
     assert len(gap) == 1 and label * 2 < figure  # a small label, a blank row, then a figure more than twice as tall
+
+
+def test_a_card_badge_is_a_white_tab_on_the_right_edge_with_the_word_down_it():
+    recipe = {"pieces": [{"shape": collage.FULL, "photo": "#0", "map": {}, "visible": True}], "peek_photo": None}
+    card = collage.apply_card(recipe, [], "", None, None, "GARMIN")
+    badge = card["badge"]
+    assert badge["x"] + badge["w"] == W and badge["y"] < collage.SAFE_TOP + 200 and badge["h"] > badge["w"] * 2
+    tab, ink = collage._badge_layers(badge, 1.0)
+    inside = tab[badge["y"]:badge["y"] + badge["h"], badge["x"]:]
+    assert inside.min() == 1.0 and tab.sum() == inside.sum()  # the tab, and nothing else
+    word = np.nonzero(ink.any(1))[0]
+    assert word[-1] - word[0] > ink.any(0).sum() * 3  # the word runs down, not across
+    assert "badge" not in collage.apply_card(card, [], "", None, None, "")  # "" takes it away

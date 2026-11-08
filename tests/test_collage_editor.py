@@ -392,7 +392,8 @@ def test_a_card_for_a_version_without_a_route_borrows_the_runs(run):
     (run / "edited").mkdir(exist_ok=True)
     (run / "edited" / "v01.json").write_text(json.dumps({**recipe, "route": None}))  # an edit took the route away
     card = json.loads(collage.make_card(run, "v01", "", reel=False)[0].read_text())
-    assert card["route"] and [b.get("style") for b in card["text"]] == ["stats"]  # "" leaves the title out
+    assert card["route"] and [b.get("style") for b in card["text"]] == ["stats"] and card["badge"]["text"] == "GARMIN"
+    assert "badge" not in json.loads(collage.make_card(run, "v01", reel=False, badge="")[0].read_text())
 
 
 def test_the_editor_makes_a_card_of_what_is_on_screen(server):
@@ -400,9 +401,14 @@ def test_the_editor_makes_a_card_of_what_is_on_screen(server):
     recipe = first(port, token)
     carded = ok(port, token, "POST", "/api/card", {"recipe": recipe})["recipe"]
     assert carded["text"][-1]["style"] == "stats" and carded["pieces"] == recipe["pieces"]
+    assert carded["badge"]["text"] == "GARMIN" and len(carded["text"]) == 1  # no title unless you add one
     ok(port, token, "POST", "/api/save", {"recipe": carded})  # what the card makes, the editor accepts
     status, _, _ = ask(port, "POST", "/api/preview", {"recipe": carded, "scale": 0.2}, {"X-Token": token})
     assert status == 200
+    for spoil in ({"text": "x" * 40}, {"w": 5000}, {"tab": [1, 2]}, {"font": "/etc/passwd"}):
+        bad = json.loads(json.dumps(carded))
+        bad["badge"].update(spoil)
+        assert ask(port, "POST", "/api/save", {"recipe": bad}, {"X-Token": token})[0] == 400
     carded["text"][-1]["style"] = "fancy"
     status, data, _ = ask(port, "POST", "/api/save", {"recipe": carded}, {"X-Token": token})
     assert status == 400 and b"style" in data

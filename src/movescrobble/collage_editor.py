@@ -160,6 +160,21 @@ class Editor:
             block["size"] = round(block["size"])
             for name in ("x", "y", "rotate", "opacity", "edge", "pool", "spacing"):
                 _finite(block.get(name, 1), name)
+        badge = recipe.get("badge")
+        if badge:
+            if not isinstance(badge.get("text"), str) or len(badge["text"]) > 24:
+                raise Refused("a badge holds a short word")
+            if badge.get("font") not in fonts | {collage.badge_font()}:
+                raise Refused("unknown font")
+            for name in ("x", "y", "w", "h"):
+                _finite(badge.get(name), name)
+            if not (8 <= badge["w"] <= 600 and 8 <= badge["h"] <= 1200):
+                raise Refused("badge size out of range")
+            for name in ("tab", "ink"):
+                if not isinstance(badge.get(name), list) or len(badge[name]) != 3:
+                    raise Refused("a badge needs two colours")
+                for value in badge[name]:
+                    _finite(value, name)
         route = recipe.get("route")
         if route:
             if not isinstance(route.get("points"), list) or not 2 <= len(route["points"]) <= 5000:
@@ -225,10 +240,11 @@ class Editor:
         recipe = self.check(recipe)
         saved = self.card_info
         lines = saved.get("lines") or collage.card_lines_from(self.stats)
+        badge = (recipe.get("badge") or {}).get("text", "GARMIN")
         route = collage.route_of(recipe) or next(
             (r for r in map(collage.route_of, [*self.originals.values(), *self.edits.values()]) if r), None)
         with self.paint_lock:
-            return collage.apply_card(recipe, lines, saved.get("title", ""), route, self.store)
+            return collage.apply_card(recipe, lines, "", route, self.store, badge)
 
     def draw(self, source: str, layout: str, look: str, seed: int | None = None) -> dict:
         """A new version with the same photos, type and route, in a new composition."""
