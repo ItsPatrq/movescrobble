@@ -240,7 +240,7 @@ class Editor:
         recipe = self.check(recipe)
         saved = self.card_info
         lines = saved.get("lines") or collage.card_lines_from(self.stats)
-        badge = (recipe.get("badge") or {}).get("text", "GARMIN")
+        badge = (recipe.get("badge") or {}).get("text", "")  # a badge it has stays
         route = collage.route_of(recipe) or next(
             (r for r in map(collage.route_of, [*self.originals.values(), *self.edits.values()]) if r), None)
         with self.paint_lock:

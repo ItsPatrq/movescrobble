@@ -1057,7 +1057,7 @@ function panelType(panel) {
     panel.append(el("div", { className: "line" }, el("label", { textContent: "Badge" }), word,
       check("Show", () => b.visible !== false, (v) => { b.visible = v; }, "badge-show")));
   }
-  panel.append(el("p", { className: "hint", textContent: "Card layout: distance, time and pace in a column, the route in the circle, a badge on the right edge. In a column block, each line is LABEL|figure|unit." }));
+  panel.append(el("p", { className: "hint", textContent: "Card layout: distance, time and pace in a column, the route in the circle. In a column block, each line is LABEL|figure|unit." }));
   blocks.forEach((block, i) => {
     const on = S.kind === "text" && S.sel === i;
     const head = button(`${on ? "▾" : "▸"} ${block.lines[0] || "(empty)"}`, () => { select("text", on ? -1 : i); renderPanel(); drawOverlay(); }, `block-${i}`, "link");

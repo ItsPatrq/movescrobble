@@ -1040,10 +1040,8 @@ def _block(lines: list[str], font: ImageFont.FreeTypeFont, spacing: float = 1.3)
 
 def _stats_block(lines: list[str], path: str, size: int, spacing: float = 1.0) -> Image.Image | None:
     """LABEL|figure|unit lines as a column: a small label over each large figure, the unit beside it on the same
-    baseline, and a hatched bar down the left that ties the column together."""
+    baseline."""
     figure, label, unit = _font(path, size), _font(path, max(4, round(size * 0.34))), _font(path, max(4, round(size * 0.5)))
-    bar = max(4, round(size * 0.12))
-    left = bar * 3
     block = Image.new("L", (W * 2, round(size * 2.2 * max(1, len(lines))) + 40), 0)
     draw = ImageDraw.Draw(block)
     stroke = max(1, size // 40)
@@ -1051,20 +1049,16 @@ def _stats_block(lines: list[str], path: str, size: int, spacing: float = 1.0) -
     for line in lines:
         name, shown, after = (line.split("|") + ["", ""])[:3]
         if name:
-            draw.text((left, y), name.upper(), fill=255, font=label, stroke_width=max(1, stroke // 2), stroke_fill=255)
+            draw.text((0, y), name.upper(), fill=255, font=label, stroke_width=max(1, stroke // 2), stroke_fill=255)
             y += round(label.size * 1.2)
         baseline = y + figure.getmetrics()[0]
-        draw.text((left, baseline), shown, fill=255, font=figure, anchor="ls", stroke_width=stroke, stroke_fill=255)
+        draw.text((0, baseline), shown, fill=255, font=figure, anchor="ls", stroke_width=stroke, stroke_fill=255)
         if after:
-            x = left + draw.textlength(shown, font=figure) + size * 0.14
+            x = draw.textlength(shown, font=figure) + size * 0.14
             draw.text((x, baseline), after, fill=255, font=unit, anchor="ls", stroke_width=stroke, stroke_fill=255)
         y = baseline + round(size * (spacing - 0.62))
     if y <= 0:
         return None
-    for k in range(-bar * 2, y + bar * 2, bar * 2):  # the hatch: short diagonals, one bar wide
-        draw.line([(0, k + bar * 1.6), (bar, k)], fill=255, width=max(2, bar // 2))
-    draw.rectangle([bar + 1, -10, left - 1, y + 10], fill=0)  # nothing of the hatch runs into the figures
-    draw.rectangle([0, y, bar, y + bar * 3], fill=0)
     box = block.getbbox()
     return block.crop(box) if box else None
 
@@ -1282,11 +1276,15 @@ def _darken_under(
     wide: float,
     wide_strength: float,
     scale: float = 1.0,
+    opacity: float = 1.0,
 ) -> np.ndarray:
-    """A dark edge and a soft dark pool under a line or type, so that it reads on any picture."""
+    """A dark edge and a soft dark pool under a line or type, so that it reads on any picture. Only around it: under
+    the strokes themselves (`alpha` at its full `opacity`) the picture stays as it is, so a translucent line or type
+    shows the picture through it rather than the dark edge."""
     near, far = _blurred(alpha, tight * scale), _blurred(alpha, wide * scale)
     amount = (1 - np.clip(near * 4, 0, 1) * tight_strength) * (1 - np.clip(far * 3, 0, 1) * wide_strength)
-    return final * amount[..., None]
+    inside = np.clip(alpha / max(opacity, 1e-3), 0, 1)
+    return final * (amount + (1 - amount) * inside)[..., None]
 
 
 def _owners(pieces: list[Piece]) -> np.ndarray:
@@ -1667,7 +1665,9 @@ def shows_legs(piece: dict, recipe: dict) -> bool:
 
 CARD_MARGIN = 56
 CARD_ROUTE_FILL = 0.79  # of the circle's diameter, along the route's diagonal
-CARD_STATS_SIZE = 84
+CARD_STATS_SIZE = 64
+CARD_ROUTE_WIDTH = 10
+CARD_OPACITY = 0.55  # route and stats: the picture shows through them
 CARD_STATS_OVERLAP = 30  # how far the column may reach up into the leg photo: over the shoes, a little
 CARD_BOTTOM = 200  # the column ends at least this far from the bottom edge
 BADGE_BOX = (W - 96, 168, 96, 296)  # x, y, w, h: a tab against the right edge, near the top
@@ -1716,9 +1716,10 @@ def _badge_layers(badge: dict, scale: float) -> tuple[np.ndarray, np.ndarray]:
 
 
 def card_route(recipe: dict, points: list[list[float]], aspect: float, store: PhotoStore | None = None) -> dict:
-    """The route for a card: filling the circle when the collage has one, thick and white with a dark edge; otherwise
-    where the picture is calmest."""
-    block = {"points": points, "width": 13, "colour": [255, 255, 255], "opacity": 1.0, "edge": 0.95, "pool": 0.45}
+    """The route for a card: filling the circle when the collage has one, white and translucent with a dark edge;
+    otherwise where the picture is calmest."""
+    block = {"points": points, "width": CARD_ROUTE_WIDTH, "colour": [255, 255, 255], "opacity": CARD_OPACITY, "edge": 0.95,
+             "pool": 0.45}
     circle = _circle_of(recipe)
     if circle:
         cx, cy, r = circle
@@ -1737,7 +1738,7 @@ def apply_card(recipe: dict, lines: list[str], title: str = "", route: dict | No
     """The recipe as a card: `lines` (LABEL|figure|unit) as a column at the bottom left, `route` ({points, aspect}) in
     the circle, `badge` down a white tab on the right edge, `title` at the top if given. Pieces, look and reel stay."""
     font = card_font()
-    common = {"font": font, "rotate": 0, "colour": list(TYPE_COLOUR), "opacity": 1.0, "edge": 0.8, "pool": 0.55}
+    common = {"font": font, "rotate": 0, "colour": list(TYPE_COLOUR), "opacity": CARD_OPACITY, "edge": 0.8, "pool": 0.55}
     blocks = []
     if title:
         size = _fitted_size(font, [title], 88, W - SAFE_RIGHT - CARD_MARGIN * 2) or 40
@@ -1893,7 +1894,8 @@ def paint(recipe: dict, store: PhotoStore, scale: float = 1.0, overlays: bool = 
         block = recipe.get("route")
         if block and block.get("visible", True):
             line, along = _route_alpha(block, scale)
-            final = _darken_under(final, line, 3, block.get("edge", 0.75), 22, block.get("pool", 0.3), scale)
+            final = _darken_under(final, line, 3, block.get("edge", 0.75), 22, block.get("pool", 0.3), scale,
+                                  block.get("opacity", 1.0))
             final = (
                 final * (1 - line[..., None]) + np.array(block["colour"], dtype=np.float32)[None, None] / 255 * line[..., None]
             )
@@ -1903,7 +1905,8 @@ def paint(recipe: dict, store: PhotoStore, scale: float = 1.0, overlays: bool = 
             if not block.get("visible", True):
                 continue
             over = _type_alpha(block, scale)
-            final = _darken_under(final, over, 4, block.get("edge", 0.7), 34, block.get("pool", 0.5), scale)
+            final = _darken_under(final, over, 4, block.get("edge", 0.7), 34, block.get("pool", 0.5), scale,
+                                  block.get("opacity", 1.0))
             colour = np.array(block["colour"], dtype=np.float32) / 255
             final = final * (1 - over[..., None]) + colour[None, None] * over[..., None]
         badge = recipe.get("badge")
@@ -1923,7 +1926,7 @@ def render_still(recipe: dict, store: PhotoStore, scale: float = 1.0) -> Image.I
 
 
 def make_card(folder: Path, version: str, title: str = "", data: ActivityData | None = None,
-              reel: bool = True, badge: str = "GARMIN") -> list[Path]:
+              reel: bool = True, badge: str = "") -> list[Path]:
     """One version of a run as a card, saved as a new version beside it (`card-<version>`, in `edited/`, so the editor
     opens it) and exported as a still and, with ffmpeg, a reel; with a badge, also as `card-<version>-no-badge` without
     it. Returns what was written."""

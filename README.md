@@ -246,10 +246,10 @@ Written to be driven by an AI agent for now: see `.claude/skills/collage/SKILL.m
 
 `movescrobble collage-card v13 --activity latest` turns one version of the newest run into a card: distance, total time
 and average pace (by the watch's timer, as Garmin shows them) in a column starting at the foot of the leg photo, the
-route, thick and white, filling the collage's circle, and a white tab with GARMIN down it on the right edge (the word in a
-plain bold font, not Garmin's own lettering). It is saved as `card-v13` beside the version, so `collage-edit` opens it,
-and exported as a still and a reel, with the badge (`card-v13`) and without it (`card-v13-no-badge`). `--badge ""`
-makes only the copy without it, `--title` adds a title, `--folder` picks another run;
+route filling the collage's circle; route and figures are white and a little see-through, so the picture shows through
+them. It is saved as `card-v13` beside the version, so `collage-edit` opens it, and exported as a still and a reel.
+`--badge GARMIN` adds a white tab with the word down it on the right edge (in a plain bold font, not Garmin's own
+lettering) and exports a copy without it too (`card-v13-no-badge`), `--title` adds a title, `--folder` picks another run;
 without `--activity` the run's own stats and route are used. In the editor, Type > Card layout does the same to the
 version on screen. A route shows where you run, even with its ends trimmed: think before you post it.
 

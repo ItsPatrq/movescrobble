@@ -207,5 +207,5 @@ def test_the_comparison_notices_a_small_seam_shift_and_ignores_rounding():
 def test_the_card_template(update_vrt):
     recipe = drawn("orbit", text=(), route=False)
     card = collage.apply_card(recipe, ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], "",
-                              collage.route_from(ROUTE), store(), "GARMIN")
+                              collage.route_from(ROUTE), store())
     check("card", picture(card, 0.5), update_vrt)

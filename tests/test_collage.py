@@ -539,6 +539,15 @@ def test_type_reads_on_the_worst_picture():
     assert collage.luma(under)[ring].mean() < 0.3
 
 
+def test_a_translucent_line_shows_the_picture_not_its_dark_edge():
+    picture = np.full((H, W, 3), 0.8, dtype=np.float32)
+    line = np.zeros((H, W), dtype=np.float32)
+    line[900:920, 200:800] = 0.66  # a stroke drawn at 66% opacity
+    under = collage._darken_under(picture, line, 3, 0.95, 22, 0.45, opacity=0.66)
+    assert np.allclose(under[905:915, 300:700], 0.8)  # the picture under the stroke, untouched
+    assert under[897, 500].mean() < 0.4  # the dark edge still around it
+
+
 def test_stack_is_rows_of_equal_height():
     for seed in range(8):
         pieces = collage.stack(random.Random(seed), 5)
@@ -909,7 +918,7 @@ def test_a_card_puts_title_stats_and_route_where_they_belong():
     box = card["route"]
     corners = [(box["x"] + u * box["w"], box["y"] + v * box["h"]) for u in (0, 1) for v in (0, 1)]
     assert all(math.hypot(x - cx, y - cy) <= r for x, y in corners)  # the whole route lies in the circle
-    assert box["width"] >= 12 and box["edge"] > 0.9  # bolder than a drawn version's
+    assert box["width"] == collage.CARD_ROUTE_WIDTH and box["opacity"] < 1 and box["edge"] > 0.9  # see-through, edged
     picture = collage.render_still(card, store, 0.25)
     assert picture.size == (270, 480)
 
@@ -919,7 +928,7 @@ def test_a_column_of_stats_has_small_labels_over_large_figures():
     one = collage._stats_block(["Distance|8.04|km"], font, 100)
     three = collage._stats_block(["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], font, 100)
     assert three.height > one.height * 2.4
-    text = np.asarray(one)[:, 40:] > 0  # right of the hatched bar, which runs the whole height
+    text = np.asarray(one) > 0
     rows = np.nonzero(text.any(1))[0]
     gap = np.nonzero(np.diff(rows) > 1)[0]
     label, figure = rows[gap[0]] - rows[0] + 1, rows[-1] - rows[gap[0] + 1] + 1  # the first run of rows, then the rest
