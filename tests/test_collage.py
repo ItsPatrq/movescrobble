@@ -2,6 +2,7 @@ import colorsys
 import functools
 import inspect
 import json
+import math
 import random
 import re
 import subprocess
@@ -538,6 +539,15 @@ def test_type_reads_on_the_worst_picture():
     assert collage.luma(under)[ring].mean() < 0.3
 
 
+def test_a_translucent_line_shows_the_picture_not_its_dark_edge():
+    picture = np.full((H, W, 3), 0.8, dtype=np.float32)
+    line = np.zeros((H, W), dtype=np.float32)
+    line[900:920, 200:800] = 0.66  # a stroke drawn at 66% opacity
+    under = collage._darken_under(picture, line, 3, 0.95, 22, 0.45, opacity=0.66)
+    assert np.allclose(under[905:915, 300:700], 0.8)  # the picture under the stroke, untouched
+    assert under[897, 500].mean() < 0.4  # the dark edge still around it
+
+
 def test_stack_is_rows_of_equal_height():
     for seed in range(8):
         pieces = collage.stack(random.Random(seed), 5)
@@ -876,3 +886,63 @@ def test_the_leg_photo_is_told_by_its_photo_wherever_it_goes():
     assert collage.shows_legs({"photo": "legs.jpg", "body": False}, recipe)
     assert not collage.shows_legs({"photo": "park.jpg", "body": True}, recipe)  # a stale flag from before
     assert not collage.shows_legs({"photo": "legs.jpg"}, {"peek_photo": None})
+
+
+# --- the card
+
+
+def test_a_card_reads_as_the_watch_does():
+    garmin = {**RUN, "activityName": "Warsaw Running", "summaryDTO": {**RUN["summaryDTO"], "duration": 2862.0}}
+    data = collage.activity_data(garmin)
+    assert data.name == "Warsaw Running"
+    assert data.card_lines() == ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"]  # timer, not moving time
+    swim = collage.ActivityData(kind="lap_swimming", distance_m=1500, total_s=1800, average_speed_ms=1500 / 1800)
+    assert swim.card_lines() == ["Distance|1500|m", "Total time|30:00|", "Avg pace|2:00|/100m"]
+    assert collage.card_lines_from({"distance": "8.04 km", "time": "47:03", "pace": "5:51 /km", "hr": "149 bpm"}) == [
+        "Distance|8.04|km", "Time|47:03|", "Avg pace|5:51|/km"]  # an older run's moving time is not called total
+
+
+def test_a_card_puts_title_stats_and_route_where_they_belong():
+    store = collage.PhotoStore({**{f"#{i}": scene(i) for i in range(4)}, "#legs": legs_photo()})
+    version = Version("v01", 7, "orbit", "natural", [f"#{i}" for i in range(4)], "#legs")
+    recipe = collage.draw_recipe(version, store)
+    route = collage.route_from(line_of_points())
+    card = collage.apply_card(recipe, ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], "Warsaw Running",
+                              route, store)
+    title, stats = card["text"]
+    assert title["lines"] == ["Warsaw Running"] and title["y"] >= collage.SAFE_TOP and stats["style"] == "stats"
+    tall = collage._type_image(stats).height
+    assert stats["y"] + tall <= H - collage.CARD_BOTTOM
+    assert stats["y"] == min(collage._legs_bottom(card) - collage.CARD_STATS_OVERLAP, H - collage.CARD_BOTTOM - tall)
+    cx, cy, r = collage._circle_of(card)
+    box = card["route"]
+    corners = [(box["x"] + u * box["w"], box["y"] + v * box["h"]) for u in (0, 1) for v in (0, 1)]
+    assert all(math.hypot(x - cx, y - cy) <= r for x, y in corners)  # the whole route lies in the circle
+    assert box["width"] == collage.CARD_ROUTE_WIDTH and box["opacity"] < 1 and box["edge"] > 0.9  # see-through, edged
+    picture = collage.render_still(card, store, 0.25)
+    assert picture.size == (270, 480)
+
+
+def test_a_column_of_stats_has_small_labels_over_large_figures():
+    font = collage.available_fonts()[0]
+    one = collage._stats_block(["Distance|8.04|km"], font, 100)
+    three = collage._stats_block(["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], font, 100)
+    assert three.height > one.height * 2.4
+    text = np.asarray(one) > 0
+    rows = np.nonzero(text.any(1))[0]
+    gap = np.nonzero(np.diff(rows) > 1)[0]
+    label, figure = rows[gap[0]] - rows[0] + 1, rows[-1] - rows[gap[0] + 1] + 1  # the first run of rows, then the rest
+    assert len(gap) == 1 and label * 2 < figure  # a small label, a blank row, then a figure more than twice as tall
+
+
+def test_a_card_badge_is_a_white_tab_on_the_right_edge_with_the_word_down_it():
+    recipe = {"pieces": [{"shape": collage.FULL, "photo": "#0", "map": {}, "visible": True}], "peek_photo": None}
+    card = collage.apply_card(recipe, [], "", None, None, "GARMIN")
+    badge = card["badge"]
+    assert badge["x"] + badge["w"] == W and badge["y"] < collage.SAFE_TOP + 200 and badge["h"] > badge["w"] * 2
+    tab, ink = collage._badge_layers(badge, 1.0)
+    inside = tab[badge["y"]:badge["y"] + badge["h"], badge["x"]:]
+    assert inside.min() == 1.0 and tab.sum() == inside.sum()  # the tab, and nothing else
+    word = np.nonzero(ink.any(1))[0]
+    assert word[-1] - word[0] > ink.any(0).sum() * 3  # the word runs down, not across
+    assert "badge" not in collage.apply_card(card, [], "", None, None, "")  # "" takes it away

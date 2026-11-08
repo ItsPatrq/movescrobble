@@ -64,6 +64,7 @@ def check(name: str, actual: Image.Image, update: bool, folder: Path = GOLDEN, s
 @pytest.fixture(autouse=True)
 def builtin_font(monkeypatch):
     monkeypatch.setattr(collage, "FONTS", [])
+    monkeypatch.setattr(collage, "CARD_FONTS", [])
 
 
 def store() -> collage.PhotoStore:
@@ -201,3 +202,10 @@ def test_the_comparison_notices_a_small_seam_shift_and_ignores_rounding():
     assert same_picture(Image.fromarray(np.clip(noisy, 0, 255).astype(np.uint8)), base)
     edit_seam(recipe)
     assert not same_picture(picture(recipe).resize(SIZE, Image.Resampling.BOX), base)
+
+
+def test_the_card_template(update_vrt):
+    recipe = drawn("orbit", text=(), route=False)
+    card = collage.apply_card(recipe, ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], "",
+                              collage.route_from(ROUTE), store())
+    check("card", picture(card, 0.5), update_vrt)

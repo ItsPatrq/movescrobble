@@ -556,6 +556,14 @@ def test_a_filter_and_its_sliders_change_the_photo_and_can_go_on_every_piece(ed)
     assert all(p["adjust"]["fade"] == pytest.approx(0.2) and p["adjust"]["saturation"] == 0 for p in saved["pieces"])
 
 
+def test_card_layout_puts_the_stats_in_a_column(ed):
+    ed.id("tab-type").click()
+    ed.id("card").click()
+    saved = ed.saved_when(lambda r: any(b.get("style") == "stats" for b in r["text"] or []))
+    assert saved["text"][-1]["lines"][0].startswith("Distance|")
+    assert ed.id(f"text-box-{len(saved['text']) - 1}").count() == 1
+
+
 # --- how it looks
 
 

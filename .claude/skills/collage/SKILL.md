@@ -16,6 +16,7 @@ description: Make an Instagram reel collage from workout photos with `movescrobb
 ## Reference
 
 - They want to change a version by hand (crop, zoom, switch or add photos, filters): `movescrobble collage-edit FOLDER`, or `m` in the `movescrobble` menu, opens a page on this machine, for them to drive. Their exports land in `exported/`. Recipes in `recipes/` and `edited/` are plain JSON, so you can also change one and repaint it with `collage.render_still`.
+- They like a version and want it with its stats: `movescrobble collage-card VERSION --activity latest` makes `card-VERSION` (a column of distance, total time and average pace, the route in the circle; `--badge GARMIN` adds a tab) and exports it.
 - Reels are silent 1080x1920: music is added in Instagram.
 - A route shows where someone runs, even with its ends trimmed. Mention that before they post a version marked `~`.
 - Everything stays on this machine, and output has no EXIF. Posting is theirs to do.
