@@ -126,6 +126,11 @@ def pending_session(db):
     ).fetchone()
 
 
+def still_planned(db, session_id: int) -> bool:
+    row = db.execute("SELECT status FROM sessions WHERE id=?", (session_id,)).fetchone()
+    return row is not None and row["status"] == "planned"
+
+
 def mark_scrobbled(
     db, session_id: int, plays: list[tuple[str, str, float]], skipped: list[tuple[str, str]] = (),
     minutes: float | None = None, distance_m: float | None = None,

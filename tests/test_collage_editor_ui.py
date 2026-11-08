@@ -363,6 +363,19 @@ def test_photo_can_be_changed_and_swapped(ed):
     ed.page.wait_for_function(f"window.__editor.S.recipe.pieces[{body_of(ed)}].photo === {json.dumps(choices[n])}")
 
 
+def test_the_leg_photo_moved_to_another_piece_takes_its_name_and_share_along(ed):
+    legs, at = body_of(ed), ed.piece_index(lambda p: not p["body"] and p["shape"]["type"] != "full")
+    peek = ed.recipe()["peek_photo"]
+    ed.click_piece(at)
+    ed.id("swap").select_option(str(legs))
+    ed.page.wait_for_function(f"document.querySelector('[data-testid=layer-{at}] span').textContent === 'legs'")
+    ed.saved_when(lambda r: r["pieces"][at]["photo"] == peek)
+    ed.idle()
+    assert not ed.id(f"layer-{legs}").inner_text().strip().startswith("legs")
+    painted = collage_editor.Editor(ed.run).preview(ed.recipe(), 0.25)[1]["share"]
+    assert painted > 0.03 and ed.id("share").inner_text() == f"legs {painted * 100:.0f}% of frame"
+
+
 def test_leg_framing_buttons_and_settings(ed):
     at = body_of(ed)
     ed.click_piece(at)

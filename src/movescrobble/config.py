@@ -137,9 +137,19 @@ def write_json(name: str, data: dict) -> Path:
     return f
 
 
+def write_private(path: Path, text: str) -> Path:
+    """Credentials and tokens: readable by the owner only, from the first byte (a write then chmod leaves a moment
+    in which anyone on the machine can read the file)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    path.chmod(0o600)  # an older file keeps its mode through O_CREAT
+    return path
+
+
 def write_private_json(name: str, data: dict) -> None:
-    """Credentials and tokens: readable by the owner only."""
-    write_json(name, data).chmod(0o600)
+    write_private(config_dir() / name, json.dumps(data))
 
 
 @functools.cache

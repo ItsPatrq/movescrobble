@@ -32,6 +32,7 @@ class Player:
         self.proc = None
 
     def play_file(self, path: Path, duration: float) -> None:
+        self.stop()  # the next clip is written over the file the last one may still be playing from
         self.folder.mkdir(parents=True, exist_ok=True)
         clip = self.folder / "clip.mp3"
         audio.ffmpeg("-ss", f"{max(0.0, duration * CLIP_FROM):.1f}", "-t", str(CLIP_SECONDS), "-i", str(path),

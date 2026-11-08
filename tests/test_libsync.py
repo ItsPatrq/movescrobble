@@ -292,3 +292,26 @@ def test_player_streams_a_clip_and_stops_the_previous_one(tmp_path):
     assert not p.play_song("Nobody", "Song")
     p.stop()
     assert p.proc is None
+
+
+def test_a_new_local_clip_stops_the_old_one_before_writing_over_its_file(tmp_path, monkeypatch):
+    from movescrobble import audio
+    from movescrobble.preview import Player
+
+    events = []
+
+    class Proc:
+        def __init__(self, cmd, **kw):
+            events.append("play")
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            events.append("stop")
+
+    monkeypatch.setattr(audio, "ffmpeg", lambda *args: events.append("write clip"))
+    p = Player(make_cfg(tmp_path), folder=tmp_path, popen=Proc)
+    p.play_file(tmp_path / "a.mp3", 200)
+    p.play_file(tmp_path / "b.mp3", 200)
+    assert events == ["write clip", "play", "stop", "write clip", "play"]
