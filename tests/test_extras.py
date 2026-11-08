@@ -603,3 +603,34 @@ def test_podcast_sync_clears_partial_copies_left_by_a_killed_run(tmp_path):
     (dev / "01 - Ep 0.mp3.part").write_bytes(b"who")
     pocketcasts.sync_queue(_episodes(1), dev, db, fetcher=lambda u, d: d.write_bytes(b"x"))
     assert [p.name for p in dev.iterdir()] == ["01 - Ep 0.mp3"]
+
+
+def test_lastfm_says_what_went_wrong_when_it_answers_with_an_http_error(monkeypatch):
+    import io
+    import urllib.error
+
+    from movescrobble import lastfm, net
+
+    def refuse(*_a, **_k):
+        body = io.BytesIO(b'{"error": 9, "message": "Invalid session key - Please re-authenticate"}')
+        raise urllib.error.HTTPError(lastfm.API_URL, 403, "Forbidden", {}, body)
+
+    monkeypatch.setattr(net, "open_url", refuse)
+    monkeypatch.setenv("LASTFM_API_KEY", "k")
+    monkeypatch.setenv("LASTFM_API_SECRET", "s")
+    with pytest.raises(RuntimeError, match="Last.fm error 9: Invalid session key"):
+        lastfm.love("A", "B", "old-session")
+
+
+def test_an_http_error_without_a_lastfm_body_still_surfaces(monkeypatch):
+    import io
+    import urllib.error
+
+    from movescrobble import net
+
+    def down(*_a, **_k):
+        raise urllib.error.HTTPError("https://x", 502, "Bad Gateway", {}, io.BytesIO(b"<html>"))
+
+    monkeypatch.setattr(net, "open_url", down)
+    with pytest.raises(urllib.error.HTTPError):
+        net.api_json("https://x")

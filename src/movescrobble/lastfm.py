@@ -7,7 +7,7 @@ import urllib.parse
 from typing import Callable
 
 from .config import read_json, secret, write_private_json
-from .net import request_json
+from .net import api_json
 from .scrobble import Scrobble
 
 API_URL = "https://ws.audioscrobbler.com/2.0/"
@@ -26,7 +26,7 @@ def sign(params: dict, secret: str) -> str:
 
 
 def http_post(params: dict) -> dict:
-    return request_json(API_URL, urllib.parse.urlencode(params).encode())
+    return api_json(API_URL, urllib.parse.urlencode(params).encode())
 
 
 def check(resp: dict) -> dict:
