@@ -670,7 +670,8 @@ def main(argv=None) -> None:
     cc = sub.add_parser("collage-card", help="one version of a run as a card: its name, distance, time, pace, route",
                         description="Saves the version as card-VERSION beside it, so the editor opens it, and exports a still "
                                     "and a reel to exported/. Total time and average pace are by the watch's timer, the route "
-                                    "fills the collage's circle, and a badge sits on the right edge.")
+                                    "fills the collage's circle, and a badge sits on the right edge; a copy "
+                                    "without the badge is exported too.")
     cc.add_argument("version", help="which version, such as v13")
     cc.add_argument("--folder", help="a run's folder (default: the newest under ~/Movies/movescrobble)")
     cc.add_argument("--title", default="", help="a title at the top (default: none)")

@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+import numpy as np
 import pytest
 from collage_fixtures import run_folder
 from PIL import Image
@@ -382,6 +383,10 @@ def test_a_card_is_saved_beside_the_version_and_exported(run, monkeypatch, capsy
     assert title["lines"] == ["Evening Run"] and stats["style"] == "stats"
     assert stats["lines"][0].startswith("Distance|8.04|km") and card["route"]["width"] >= 12
     assert Image.open(run / "exported" / "card-v01.jpg").size == (collage.W, collage.H)
+    with_badge, without = (np.asarray(Image.open(run / "exported" / f"{n}.jpg")) for n in ("card-v01", "card-v01-no-badge"))
+    x, y, w, h = collage.BADGE_BOX
+    assert with_badge[y + 5 : y + 20, x + 5 : x + 20].min() > 240  # the white tab
+    assert without[y + 5 : y + 20, x + 5 : x + 20].min() < 240 and not (run / "edited" / "card-v01-no-badge.json").exists()
     assert not (run / "exported" / "card-v01.mp4").exists()
     assert "card-v01.jpg" in capsys.readouterr().out
     assert json.loads((run / "recipes" / "v01.json").read_text())["text"] != card["text"]  # the version itself stays

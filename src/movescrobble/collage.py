@@ -1925,7 +1925,8 @@ def render_still(recipe: dict, store: PhotoStore, scale: float = 1.0) -> Image.I
 def make_card(folder: Path, version: str, title: str = "", data: ActivityData | None = None,
               reel: bool = True, badge: str = "GARMIN") -> list[Path]:
     """One version of a run as a card, saved as a new version beside it (`card-<version>`, in `edited/`, so the editor
-    opens it) and exported as a still and, with ffmpeg, a reel. Returns what was written."""
+    opens it) and exported as a still and, with ffmpeg, a reel; with a badge, also as `card-<version>-no-badge` without
+    it. Returns what was written."""
     listed = json.loads((folder / "versions.json").read_text()) if (folder / "versions.json").exists() else {}
     sources = [folder / "edited" / f"{version}.json", folder / "recipes" / f"{version}.json"]
     found = next((p for p in sources if p.exists()), None)
@@ -1945,12 +1946,16 @@ def make_card(folder: Path, version: str, title: str = "", data: ActivityData | 
     written = [folder / "edited" / f"{recipe['id']}.json"]
     written[0].write_text(json.dumps(recipe, indent=1, ensure_ascii=False))
     (folder / "exported").mkdir(exist_ok=True)
-    composed = paint(recipe, store, 1.0, reel=reel)
-    written.append(folder / "exported" / f"{recipe['id']}.jpg")
-    still_of(composed, recipe).save(written[-1], quality=95)
-    if reel and shutil.which("ffmpeg"):
-        written.append(folder / "exported" / f"{recipe['id']}.mp4")
-        _encode(composed, written[-1], recipe["reel"])
+    copies = [(recipe["id"], recipe)]
+    if recipe.get("badge"):  # one to post with the badge, one without
+        copies.append((f"{recipe['id']}-no-badge", {k: v for k, v in recipe.items() if k != "badge"}))
+    for name, shown in copies:
+        composed = paint(shown, store, 1.0, reel=reel)
+        written.append(folder / "exported" / f"{name}.jpg")
+        still_of(composed, shown).save(written[-1], quality=95)
+        if reel and shutil.which("ffmpeg"):
+            written.append(folder / "exported" / f"{name}.mp4")
+            _encode(composed, written[-1], shown["reel"])
     return written
 
 
