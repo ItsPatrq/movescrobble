@@ -29,7 +29,7 @@ import numpy as np
 from .config import secret
 from .lastfm import API_URL, check
 from .matcher import norm
-from .net import request_json
+from .net import api_json
 
 Transport = Callable[[dict], dict]
 Progress = Callable[[str], None]
@@ -67,7 +67,7 @@ GENERIC_TAGS = {
 
 
 def http_get(params: dict) -> dict:
-    return request_json(f"{API_URL}?{urllib.parse.urlencode(params)}")
+    return api_json(f"{API_URL}?{urllib.parse.urlencode(params)}")
 
 
 def _get(method: str, transport: Transport, **params) -> dict:
