@@ -583,6 +583,11 @@ class Shell:
         if not scrobbles or not self.yes("Send these to Last.fm?", default=True):
             return
         try:
+            flow.ensure_pending(self.db, row)
+        except ValueError as e:
+            self.say(f"[yellow]{e}[/]")
+            return
+        try:
             with self.busy("sending to Last.fm"):
                 msg = self.act.submit(scrobbles)
         except Exception as e:  # keep the session so nothing is lost
