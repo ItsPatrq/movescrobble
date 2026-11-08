@@ -160,6 +160,47 @@ def cmd_ytm_auth(a) -> None:
     print("Next: `movescrobble on-connect` with the headphones plugged in creates the playlist.")
 
 
+def _activity_data(which: str, trim: float):
+    from . import collage, garmin
+
+    if not garmin.authorised():
+        raise SystemExit("--activity reads Garmin: run `movescrobble garmin-auth` first")
+    client = garmin.client()
+    activity = client.get_activities(0, 1)[0]["activityId"] if which == "latest" else which
+    details = client.get_activity_details(activity, maxpoly=4000)
+    return collage.activity_data(client.get_activity(activity), details, trim)
+
+
+def cmd_collage_edit(a) -> None:
+    from . import collage, collage_editor
+
+    folder = Path(a.folder).expanduser() if a.folder else collage_editor.newest_run(collage.RUNS_HOME)
+    if folder is None:
+        raise SystemExit("no runs yet: make one with `movescrobble collage`, or name a folder")
+    server, address = collage_editor.serve(folder, a.port, not a.no_browser)
+    print(f"editing {folder}\n{address}\nCtrl-C stops it. Edits are saved as you go, in edited/; exports go to exported/.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.shutdown()
+
+
+def cmd_collage(a) -> None:
+    from . import collage
+
+    data = _activity_data(a.activity, a.route_trim) if a.activity else None
+    stamp = f"collage-{datetime.now():%Y%m%d-%H%M%S}"
+    out = Path(a.out).expanduser() if a.out else collage.RUNS_HOME / stamp
+    sheet, versions = collage.make(
+        collage.find_photos([Path(p).expanduser() for p in a.photos]), out, a.count,
+        collage.find_photos([Path(p).expanduser() for p in a.peek or []]),
+        a.peek_level, list(a.text or []), not a.no_reels, a.seed,
+        a.layouts.split(",") if a.layouts else None, a.looks.split(",") if a.looks else None,
+        only=a.only.split(",") if a.only else None, data=data, fields=a.data.split(",") if a.data else None,
+        define=collage.find_photos([Path(p).expanduser() for p in a.define or []]), peek_side=a.peek_side)
+    print(f"{len(versions)} versions in {out}\ncontact sheet: {sheet}")
+
+
 def cmd_recap(a) -> None:
     from . import stats
 
@@ -573,6 +614,42 @@ def main(argv=None) -> None:
     ya.add_argument("--account", type=int, default=0, help="which Google account, with several signed in (0 = first)")
     ya.add_argument("--cookies", help="use a cookies.txt exported from a signed-in browser instead")
     ya.set_defaults(func=cmd_ytm_auth)
+    co = sub.add_parser("collage", help="artsy, dark Instagram reel collages from photos; every run draws new versions",
+                        description="Cuts photos into shapes, in many versions to choose from. "
+                                    "Writes a still and a silent 9:16 reel per version, contact-sheet.jpg and versions.json.")
+    co.add_argument("photos", nargs="+", help="photos or folders of them; one is enough, up to 3 cut a single picture")
+    co.add_argument("--peek", action="append", metavar="PHOTO", help="a photo that stays a detail: small, off-centre, partly "
+                    "covered; every version carries one of them (repeatable)")
+    co.add_argument("--define", action="append", metavar="PHOTO", help="a photo with muscle shading slightly deepened (light "
+                    "only, shapes stay as they are), cut like the others unless it is also a --peek; repeatable")
+    co.add_argument("--peek-side", choices=("left", "right", "either"), default="either",
+                    help="which leg to keep when the place is too narrow for both")
+    co.add_argument("--peek-level", choices=("subtle", "bold"), default="bold",
+                    help="size of the peek where a layout has no place kept for it: 3-6%% or 8-15%% of the frame")
+    co.add_argument("-n", "--count", type=int, default=12, help="how many versions")
+    co.add_argument("--activity", metavar="ID", help="show this Garmin activity's data; ID or latest. Each version picks its "
+                    "own mix and some show none; heart rate only sometimes")
+    co.add_argument("--data", help="show exactly these on every version, comma separated: "
+                    "date,distance,time,pace,speed,hr,climb,route")
+    co.add_argument("--route-trim", type=float, default=500, metavar="METRES",
+                    help="cut this much off both route ends, which usually start at your door (default 500; 0 keeps them)")
+    co.add_argument("--text", action="append", metavar="LINE", help="a line of type for some versions (repeatable)")
+    co.add_argument("--layouts", help="only these, comma separated: stack,bands,slants,arcade,orbit,ripple by default; "
+                    "also slashes,eclipse,shards,stairs,ghost,blinds")
+    co.add_argument("--looks",
+                    help="only these, comma separated: natural, sunset, colour, muted, or single looks such as chrome,noir")
+    co.add_argument("--no-reels", action="store_true", help="stills and contact sheet only, much faster")
+    co.add_argument("--out", help="output folder (default ~/Movies/movescrobble/collage-<time>)")
+    co.add_argument("--seed", type=int, help="repeat an earlier run: its seed is in versions.json")
+    co.add_argument("--only", help="with --seed and the same arguments: render just these versions, e.g. v03,v07")
+    co.set_defaults(func=cmd_collage)
+    ed = sub.add_parser("collage-edit", help="change a collage in your browser: crops, seams, colours, type, route, reel",
+                        description="Opens a page on this machine only that edits the recipes of a run. What it shows is painted "
+                                    "by the same code as the final picture.")
+    ed.add_argument("folder", nargs="?", help="a run's folder (default: the newest under ~/Movies/movescrobble)")
+    ed.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (default: any free one)")
+    ed.add_argument("--no-browser", action="store_true", help="print the address instead of opening it")
+    ed.set_defaults(func=cmd_collage_edit)
     rc = sub.add_parser("recap", help="swims, minutes, discoveries over the last days")
     rc.add_argument("--days", type=int, default=7)
     rc.set_defaults(func=cmd_recap)

@@ -228,6 +228,51 @@ to remove the files.
 The shell and the agent share everything (database, config, device state), so use either, or both: the agent
 does the routine when you plug in, the shell is for looking, correcting and rerolling.
 
+## Reel collages
+
+`movescrobble collage PHOTOS... [--peek PHOTO] [--activity latest]` cuts your photos into shapes (straight stacked rows, bands, slants, arches, a moon, and curved rows by
+default; slashes, eclipses, shards, stairs, double exposures and blinds with `--layouts`), keeps their own colours with a slight edit (`natural`, the most common), or grades
+them: `sunset` pulls every photo to one warm palette sampled from them, plus colour (chrome, neon, golden, teal) and muted
+(noir, subway, tungsten, bleach, sodium, soho; `--looks natural`, `sunset`, `colour` or `muted` for one kind), and writes 12 versions (`-n` for more or fewer) to `~/Movies/movescrobble/`: a still and a silent 9:16
+reel each, plus `contact-sheet.jpg`. Every run draws new versions. Gaps between pieces show a dimmed photo, not black. A `--peek` photo is on every version as one ordinary cell of the pattern, cut like its neighbours but smaller and quieter, usually with both legs in frame; in a reel it appears early and later pictures arrive over its edges. One photo is enough: up to 3 are cut as one continuous picture.
+
+Garmin activities carry no photos, so you bring them. `--activity latest` adds the activity's data, a different mix per
+version and none on some: distance, time, pace, km/h, heart rate (only sometimes), climb, and the route as a line that
+draws itself. `--data distance,speed,route` shows exactly those everywhere. Routes lose 500 m at both ends (`--route-trim`),
+which are usually your door, but a route still shows where you run. Output has no EXIF and `versions.json` no coordinates.
+Written to be driven by an AI agent for now: see `.claude/skills/collage/SKILL.md`.
+
+### Changing a collage
+
+`movescrobble collage-edit [FOLDER]` opens a page for a run (the newest by default); in the menu, `m` Collage lets you pick a
+run and stops the page when you press a key. Each version has a recipe in `recipes/`:
+every shape, crop, colour, type block, route and reel timing as plain data, with no coordinates. The page changes a recipe and
+shows it painted by the same code as the final picture.
+
+- **Pieces:** drag a photo inside its shape, wheel to zoom, Shift+wheel to turn; or crop on the whole photo, dragging the window
+  to move it and its corner to zoom; switch or swap photos, flip, frame both legs or one; reorder, hide, duplicate, add or delete
+  pieces.
+- **Photos from disk:** "Add photos…" or drop them on the picture. One dropped on a piece goes into it; otherwise it becomes a
+  new piece. They are copied into the run's `added/`, so the run keeps working if the originals move.
+- **Filters:** per photo, Vivid, Warm, Cool, Fade, Mono, Noir or Rose as a start, then exposure, contrast, saturation, warmth,
+  tint, fade, opacity, shadow and blend; "Use on every piece" copies them to the rest.
+- **Shapes:** with the Shape tool, drag shapes, corners and seams; pictures that share a seam move together.
+- **Colour:** switch look; saturation, exposure, contrast, blacks, glow, vignette, grain and tints; how close the leg photo
+  sits to the others, and its muscle shading.
+- **Type and route:** drag and resize, edit lines, add stats from the activity, fonts, colours, and the dark edge that keeps them
+  readable; "Find a calm place" moves them to where the picture is quietest.
+- **Reel:** length, reveal, push-in, order of appearance, and a scrubber to see any moment of the reveal without encoding.
+- **Versions:** draw new ones from the same photos, undo and redo, hold Before to compare, revert.
+
+Edits are saved as you go in `edited/`, exports in `exported/`; the run's own files stay as they were. The page is served on
+127.0.0.1 with a token for this session, and reads only the photos the run used and the ones you add.
+
+### Visual regression tests
+
+`tests/test_collage_vrt.py` compares every composition, look and kind of edit, and the reel's reveal, with pictures in `tests/vrt/`.
+`tests/test_collage_editor_ui.py` drives the page in a real Chrome. After a change you meant to make, look at the pictures in
+`tests/vrt/_failed/`, then rewrite them with `pytest --update-vrt`.
+
 ## YouTube Music login
 
 `movescrobble ytm-auth`, nothing to copy or paste. YouTube Music has no login for tools like this: it authorises requests
