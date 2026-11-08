@@ -242,6 +242,15 @@ draws itself. `--data distance,speed,route` shows exactly those everywhere. Rout
 which are usually your door, but a route still shows where you run. Output has no EXIF and `versions.json` no coordinates.
 Written to be driven by an AI agent for now: see `.claude/skills/collage/SKILL.md`.
 
+### A card
+
+`movescrobble collage-card v13 --activity latest` turns one version of the newest run into a card: the activity's name on
+top, distance, total time and average pace (by the watch's timer, as Garmin shows them) in a column at the bottom left,
+and the route, thick and white, filling the collage's circle. It is saved as `card-v13` beside the version, so
+`collage-edit` opens it, and exported as a still and a reel. `--title` sets the title (`""` for none), `--folder` picks
+another run; without `--activity` the run's own stats and route are used. In the editor, Type > Card layout does the same
+to the version on screen. A route shows where you run, even with its ends trimmed: think before you post it.
+
 ### Changing a collage
 
 `movescrobble collage-edit [FOLDER]` opens a page for a run (the newest by default); in the menu, `m` Collage lets you pick a

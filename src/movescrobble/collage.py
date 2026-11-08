@@ -66,6 +66,11 @@ FONTS = [
     "/System/Library/Fonts/Supplemental/Futura.ttc",
     "/System/Library/Fonts/HelveticaNeue.ttc",
 ]
+CARD_FONTS = [  # condensed and bold: a column of figures reads at a glance
+    "/System/Library/Fonts/Supplemental/DIN Condensed Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial Narrow Bold.ttf",
+    *FONTS,
+]
 
 LOOKS = {  # sat: colour kept; exposure and contrast shape the tone; tints push shadows and highlights
     "natural": dict(
@@ -240,12 +245,15 @@ class ActivityData:
     """What a collage can say about a Garmin activity."""
 
     kind: str = ""
+    name: str = ""  # what Garmin calls it, such as "Warsaw Running"
     date: str = ""
     distance_m: float | None = None
     seconds: float | None = None  # moving time when Garmin has it, so that time, distance and pace agree
     speed_ms: float | None = None
     hr: float | None = None
     climb_m: float | None = None
+    total_s: float | None = None  # the watch's timer, stops while running included: a card's total time
+    average_speed_ms: float | None = None  # over the timer's time: a card's average pace
     route: tuple[tuple[float, float], ...] = ()  # (lat, lon), ends already trimmed
 
     @property
@@ -269,6 +277,17 @@ class ActivityData:
         if name == "climb" and self.climb_m and self.climb_m >= 1:
             return f"{self.climb_m:.0f} m up"
         return None
+
+    def card_lines(self) -> list[str]:
+        """The card's stats, as LABEL|figure|unit: total time and average pace by the watch's timer, as Garmin shows them."""
+        lines = []
+        if self.distance_m:
+            lines.append(f"Distance|{self.distance_m:.0f}|m" if self.swim else f"Distance|{self.distance_m / 1000:.2f}|km")
+        if total := self.total_s or self.seconds:
+            lines.append(f"Total time|{clock(total)}|")
+        if speed := self.average_speed_ms or self.speed_ms:
+            lines.append(f"Avg pace|{clock(100 / speed)}|/100m" if self.swim else f"Avg pace|{clock(1000 / speed)}|/km")
+        return lines
 
     def available(self) -> list[str]:
         return [f for f in DATA_FIELDS if (bool(self.route) if f == "route" else self.stat(f) is not None)]
@@ -318,12 +337,15 @@ def activity_data(detail: dict, details: dict | None = None, trim: float = ROUTE
     points = [(float(q["lat"]), float(q["lon"])) for q in polyline if q.get("lat") is not None and q.get("lon") is not None]
     return ActivityData(
         kind=(detail.get("activityTypeDTO") or {}).get("typeKey", ""),
+        name=detail.get("activityName") or "",
         date=datetime.fromisoformat(local).strftime("%d %b %Y") if local else "",
         distance_m=summary.get("distance"),
         seconds=summary.get("movingDuration") or summary.get("elapsedDuration") or summary.get("duration"),
         speed_ms=summary.get("averageMovingSpeed") or summary.get("averageSpeed"),
         hr=summary.get("averageHR"),
         climb_m=summary.get("elevationGain"),
+        total_s=summary.get("duration") or summary.get("elapsedDuration"),  # paused time is in elapsed only
+        average_speed_ms=summary.get("averageSpeed"),
         route=tuple(trim_route(points, trim)),
     )
 
@@ -991,6 +1013,10 @@ def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(path, size) if path and Path(path).exists() else ImageFont.load_default(size)
 
 
+def card_font() -> str:
+    return next((f for f in CARD_FONTS if Path(f).exists()), "")
+
+
 def available_fonts() -> list[str]:
     """Fonts on this machine; "" is Pillow's own, which exists everywhere."""
     return [f for f in FONTS if Path(f).exists()] or [""]
@@ -1003,6 +1029,37 @@ def _block(lines: list[str], font: ImageFont.FreeTypeFont, spacing: float = 1.3)
     for line in lines:
         draw.text((0, y), line.upper(), fill=255, font=font, stroke_width=max(1, font.size // 40), stroke_fill=255)
         y += round(font.size * spacing)
+    box = block.getbbox()
+    return block.crop(box) if box else None
+
+
+def _stats_block(lines: list[str], path: str, size: int, spacing: float = 1.0) -> Image.Image | None:
+    """LABEL|figure|unit lines as a column: a small label over each large figure, the unit beside it on the same
+    baseline, and a hatched bar down the left that ties the column together."""
+    figure, label, unit = _font(path, size), _font(path, max(4, round(size * 0.34))), _font(path, max(4, round(size * 0.5)))
+    bar = max(4, round(size * 0.12))
+    left = bar * 3
+    block = Image.new("L", (W * 2, round(size * 2.2 * max(1, len(lines))) + 40), 0)
+    draw = ImageDraw.Draw(block)
+    stroke = max(1, size // 40)
+    y = 0
+    for line in lines:
+        name, shown, after = (line.split("|") + ["", ""])[:3]
+        if name:
+            draw.text((left, y), name.upper(), fill=255, font=label, stroke_width=max(1, stroke // 2), stroke_fill=255)
+            y += round(label.size * 1.2)
+        baseline = y + figure.getmetrics()[0]
+        draw.text((left, baseline), shown, fill=255, font=figure, anchor="ls", stroke_width=stroke, stroke_fill=255)
+        if after:
+            x = left + draw.textlength(shown, font=figure) + size * 0.14
+            draw.text((x, baseline), after, fill=255, font=unit, anchor="ls", stroke_width=stroke, stroke_fill=255)
+        y = baseline + round(size * (spacing - 0.62))
+    if y <= 0:
+        return None
+    for k in range(-bar * 2, y + bar * 2, bar * 2):  # the hatch: short diagonals, one bar wide
+        draw.line([(0, k + bar * 1.6), (bar, k)], fill=255, width=max(2, bar // 2))
+    draw.rectangle([bar + 1, -10, left - 1, y + 10], fill=0)  # nothing of the hatch runs into the figures
+    draw.rectangle([0, y, bar, y + bar * 3], fill=0)
     box = block.getbbox()
     return block.crop(box) if box else None
 
@@ -1110,14 +1167,20 @@ def _stack_blocks(blocks: list[dict], rng: random.Random, picture: np.ndarray | 
 
 def _type_image(block: dict, scale: float = 1.0) -> Image.Image:
     return _type_image_of(
-        json.dumps([block["lines"], block["font"], block["size"], block.get("rotate", 0), block.get("spacing", 1.3)]), scale
+        json.dumps(
+            [block["lines"], block["font"], block["size"], block.get("rotate", 0), block.get("spacing", 1.3),
+             block.get("style", "lines")]
+        ),
+        scale,
     )
 
 
 @lru_cache(maxsize=32)
 def _type_image_of(key: str, scale: float) -> Image.Image:
-    lines, path, size, rotate, spacing = json.loads(key)
-    image = _block(lines, _font(path, max(4, round(size * scale))), spacing) or Image.new("L", (1, 1), 0)
+    lines, path, size, rotate, spacing, style = json.loads(key)
+    shown = max(4, round(size * scale))
+    drawn = _stats_block(lines, path, shown, spacing) if style == "stats" else _block(lines, _font(path, shown), spacing)
+    image = drawn or Image.new("L", (1, 1), 0)
     return image.rotate(rotate, expand=True) if rotate else image
 
 
@@ -1143,6 +1206,16 @@ def _route_blocked(type_alpha: np.ndarray | None, avoid: np.ndarray | None) -> n
     return blocked
 
 
+def _route_shape(route) -> tuple[list[list[float]], float, float]:
+    """A route's shape scaled to 0..1 both ways, and how wide and tall it is (in degrees of latitude): no coordinates."""
+    mid = math.cos(math.radians(sum(p[0] for p in route) / len(route)))
+    xs = [p[1] * mid for p in route]
+    ys = [-p[0] for p in route]
+    span_x, span_y = (max(xs) - min(xs)) or 1e-9, (max(ys) - min(ys)) or 1e-9
+    points = [[round((x - min(xs)) / span_x, 4), round((y - min(ys)) / span_y, 4)] for x, y in zip(xs, ys, strict=True)]
+    return points[:: max(1, len(points) // 900)], span_x, span_y
+
+
 def _draw_route(
     route,
     rng: random.Random,
@@ -1154,10 +1227,7 @@ def _draw_route(
     The result holds its shape only, scaled to 0..1, so that no coordinates leave with a recipe."""
     if len(route) < 2:
         return None
-    mid = math.cos(math.radians(sum(p[0] for p in route) / len(route)))
-    xs = [p[1] * mid for p in route]
-    ys = [-p[0] for p in route]
-    span_x, span_y = (max(xs) - min(xs)) or 1e-9, (max(ys) - min(ys)) or 1e-9
+    points, span_x, span_y = _route_shape(route)
     size = rng.randint(560, 680) if rng.random() < 0.4 else rng.randint(380, 500)
     blocked = _route_blocked(type_alpha, avoid)
     trouble = _trouble(picture) if picture is not None else None
@@ -1169,10 +1239,8 @@ def _draw_route(
         if clear:
             break
         size = round(size * 0.85)
-    points = [[round((x - min(xs)) / span_x, 4), round((y - min(ys)) / span_y, 4)] for x, y in zip(xs, ys, strict=True)]
-    step = max(1, len(points) // 900)
     return {
-        "points": points[::step],
+        "points": points,
         "x": x0 + 8,
         "y": y0 + 8,
         "w": used_w,
@@ -1590,6 +1658,85 @@ def shows_legs(piece: dict, recipe: dict) -> bool:
     return recipe.get("peek_photo") is not None and piece["photo"] == recipe["peek_photo"]
 
 
+# --- the card: a title, a column of labelled stats, the route in the circle -------------------------------------
+
+CARD_MARGIN = 56
+CARD_ROUTE_FILL = 0.84  # of the circle's diameter, along the route's diagonal
+
+
+def _circle_of(recipe: dict) -> tuple[float, float, float] | None:
+    """(cx, cy, r) of the largest visible round piece: a moon, or a disc you added in the editor."""
+    found = []
+    for piece in recipe["pieces"]:
+        shape = piece["shape"]
+        disc = shape["parts"][0] if shape["type"] == "union" and shape["parts"] else shape
+        if disc.get("type") == "disc" and piece.get("visible", True):
+            found.append((disc["cx"], disc["cy"], disc["r"]))
+    return max(found, key=lambda c: c[2], default=None)
+
+
+def card_route(recipe: dict, points: list[list[float]], aspect: float, store: PhotoStore | None = None) -> dict:
+    """The route for a card: filling the circle when the collage has one, thick and white with a dark edge; otherwise
+    where the picture is calmest."""
+    block = {"points": points, "width": 13, "colour": [255, 255, 255], "opacity": 1.0, "edge": 0.95, "pool": 0.45}
+    circle = _circle_of(recipe)
+    if circle:
+        cx, cy, r = circle
+        h = 2 * r * CARD_ROUTE_FILL / math.hypot(aspect, 1)
+        w = h * aspect
+        return {**block, "x": cx - w / 2, "y": cy - h / 2, "w": w, "h": h}
+    w, h = (560, 560 / aspect) if aspect >= 1 else (560 * aspect, 560)
+    picture = _picture_below(recipe, store) if store is not None else None
+    x, y, _ = _spot(round(w) + 16, round(h) + 16, random.Random(recipe.get("seed", 0)),
+                    _trouble(picture) if picture is not None else None, None, 30)
+    return {**block, "x": x + 8, "y": y + 8, "w": w, "h": h}
+
+
+def apply_card(recipe: dict, lines: list[str], title: str = "", route: dict | None = None,
+               store: PhotoStore | None = None) -> dict:
+    """The recipe as a card: `title` at the top, `lines` (LABEL|figure|unit) as a column at the bottom left, and
+    `route` ({points, aspect}) in the circle. Pieces, look and reel stay as they were."""
+    font = card_font()
+    common = {"font": font, "rotate": 0, "colour": list(TYPE_COLOUR), "opacity": 1.0, "edge": 0.8, "pool": 0.55}
+    blocks = []
+    if title:
+        size = _fitted_size(font, [title], 88, W - SAFE_RIGHT - CARD_MARGIN * 2) or 40
+        blocks.append({"lines": [title], "size": size, "spacing": 1.0, **common,
+                       "x": CARD_MARGIN, "y": SAFE_TOP + 24})
+    if lines:
+        stats = {"lines": lines, "size": 100, "spacing": 1.0, "style": "stats", **common, "x": CARD_MARGIN, "y": 0}
+        stats["y"] = H - SAFE_BOTTOM - _type_image(stats).height - 28
+        blocks.append(stats)
+    recipe["text"] = blocks
+    if route and route.get("points"):
+        recipe["route"] = card_route(recipe, route["points"], route["aspect"], store)
+    return recipe
+
+
+def card_lines_from(stats: dict[str, str]) -> list[str]:
+    """Card lines from a run's stats (`versions.json`), for runs made before cards: their time is moving time."""
+    lines = []
+    for name, label in (("distance", "Distance"), ("time", "Time"), ("pace", "Avg pace")):
+        if stats.get(name):
+            figure, _, unit = stats[name].partition(" ")
+            lines.append(f"{label}|{figure}|{unit}")
+    return lines
+
+
+def route_of(recipe: dict | None) -> dict | None:
+    """A recipe's route as {points, aspect}, to put on another; None if it has none."""
+    block = (recipe or {}).get("route")
+    return {"points": block["points"], "aspect": block["w"] / max(block["h"], 1e-6)} if block else None
+
+
+def route_from(coordinates) -> dict | None:
+    """A recorded route as {points, aspect}: its shape only."""
+    if len(coordinates) < 2:
+        return None
+    points, span_x, span_y = _route_shape(coordinates)
+    return {"points": points, "aspect": span_x / span_y}
+
+
 def _piece_picture(piece: dict, recipe: dict, store: PhotoStore, scale: float) -> tuple[np.ndarray, np.ndarray | None]:
     """The photo under a piece, frame-sized: (colour, where the photo reaches, if not everywhere)."""
     w, h = _size(scale)
@@ -1719,6 +1866,39 @@ def still_of(composed: Composed, recipe: dict) -> Image.Image:
 
 def render_still(recipe: dict, store: PhotoStore, scale: float = 1.0) -> Image.Image:
     return still_of(paint(recipe, store, scale), recipe)
+
+
+def make_card(folder: Path, version: str, title: str | None = None, data: ActivityData | None = None,
+              reel: bool = True) -> list[Path]:
+    """One version of a run as a card, saved as a new version beside it (`card-<version>`, in `edited/`, so the editor
+    opens it) and exported as a still and, with ffmpeg, a reel. Returns what was written."""
+    listed = json.loads((folder / "versions.json").read_text()) if (folder / "versions.json").exists() else {}
+    sources = [folder / "edited" / f"{version}.json", folder / "recipes" / f"{version}.json"]
+    found = next((p for p in sources if p.exists()), None)
+    if found is None:
+        raise SystemExit(f"no version {version} in {folder}")
+    recipe = json.loads(found.read_text())
+    saved = listed.get("card") or {}
+    lines = data.card_lines() if data else saved.get("lines") or card_lines_from(listed.get("stats") or {})
+    title = title if title is not None else (data.name if data else saved.get("title", ""))
+    route = route_from(data.route) if data and data.route else route_of(recipe)
+    if route is None:  # this version drew none: the run's others show the same route
+        route = next((r for p in sorted((folder / "recipes").glob("*.json")) if (r := route_of(json.loads(p.read_text())))),
+                     None)
+    store = PhotoStore()
+    recipe = apply_card(recipe, lines, title, route, store)
+    recipe["id"] = f"card-{version}"
+    (folder / "edited").mkdir(exist_ok=True)
+    written = [folder / "edited" / f"{recipe['id']}.json"]
+    written[0].write_text(json.dumps(recipe, indent=1, ensure_ascii=False))
+    (folder / "exported").mkdir(exist_ok=True)
+    composed = paint(recipe, store, 1.0, reel=reel)
+    written.append(folder / "exported" / f"{recipe['id']}.jpg")
+    still_of(composed, recipe).save(written[-1], quality=95)
+    if reel and shutil.which("ffmpeg"):
+        written.append(folder / "exported" / f"{recipe['id']}.mp4")
+        _encode(composed, written[-1], recipe["reel"])
+    return written
 
 
 # --- output ------------------------------------------------------------------------------------------------------
@@ -1953,6 +2133,7 @@ def make(
                 "seed": base_seed,
                 "created": datetime.now().isoformat(timespec="seconds"),
                 "stats": {f: data.stat(f) for f in DATA_FIELDS if data.stat(f)} if data else {},
+                "card": {"title": data.name, "lines": data.card_lines()} if data else {},
                 "versions": [asdict(v) for v in done],
             },
             indent=2,

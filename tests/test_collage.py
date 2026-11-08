@@ -2,6 +2,7 @@ import colorsys
 import functools
 import inspect
 import json
+import math
 import random
 import re
 import subprocess
@@ -876,3 +877,48 @@ def test_the_leg_photo_is_told_by_its_photo_wherever_it_goes():
     assert collage.shows_legs({"photo": "legs.jpg", "body": False}, recipe)
     assert not collage.shows_legs({"photo": "park.jpg", "body": True}, recipe)  # a stale flag from before
     assert not collage.shows_legs({"photo": "legs.jpg"}, {"peek_photo": None})
+
+
+# --- the card
+
+
+def test_a_card_reads_as_the_watch_does():
+    garmin = {**RUN, "activityName": "Warsaw Running", "summaryDTO": {**RUN["summaryDTO"], "duration": 2862.0}}
+    data = collage.activity_data(garmin)
+    assert data.name == "Warsaw Running"
+    assert data.card_lines() == ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"]  # timer, not moving time
+    swim = collage.ActivityData(kind="lap_swimming", distance_m=1500, total_s=1800, average_speed_ms=1500 / 1800)
+    assert swim.card_lines() == ["Distance|1500|m", "Total time|30:00|", "Avg pace|2:00|/100m"]
+    assert collage.card_lines_from({"distance": "8.04 km", "time": "47:03", "pace": "5:51 /km", "hr": "149 bpm"}) == [
+        "Distance|8.04|km", "Time|47:03|", "Avg pace|5:51|/km"]  # an older run's moving time is not called total
+
+
+def test_a_card_puts_title_stats_and_route_where_they_belong():
+    store = collage.PhotoStore({f"#{i}": scene(i) for i in range(4)})
+    version = Version("v01", 7, "orbit", "natural", [f"#{i}" for i in range(4)])
+    recipe = collage.draw_recipe(version, store)
+    route = collage.route_from(line_of_points())
+    card = collage.apply_card(recipe, ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], "Warsaw Running",
+                              route, store)
+    title, stats = card["text"]
+    assert title["lines"] == ["Warsaw Running"] and title["y"] >= collage.SAFE_TOP and stats["style"] == "stats"
+    assert stats["y"] + collage._type_image(stats).height <= H - collage.SAFE_BOTTOM
+    cx, cy, r = collage._circle_of(card)
+    box = card["route"]
+    corners = [(box["x"] + u * box["w"], box["y"] + v * box["h"]) for u in (0, 1) for v in (0, 1)]
+    assert all(math.hypot(x - cx, y - cy) <= r for x, y in corners)  # the whole route lies in the circle
+    assert box["width"] >= 12 and box["edge"] > 0.9  # bolder than a drawn version's
+    picture = collage.render_still(card, store, 0.25)
+    assert picture.size == (270, 480)
+
+
+def test_a_column_of_stats_has_small_labels_over_large_figures():
+    font = collage.available_fonts()[0]
+    one = collage._stats_block(["Distance|8.04|km"], font, 100)
+    three = collage._stats_block(["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], font, 100)
+    assert three.height > one.height * 2.4
+    text = np.asarray(one)[:, 40:] > 0  # right of the hatched bar, which runs the whole height
+    rows = np.nonzero(text.any(1))[0]
+    gap = np.nonzero(np.diff(rows) > 1)[0]
+    label, figure = rows[gap[0]] - rows[0] + 1, rows[-1] - rows[gap[0] + 1] + 1  # the first run of rows, then the rest
+    assert len(gap) == 1 and label * 2 < figure  # a small label, a blank row, then a figure more than twice as tall

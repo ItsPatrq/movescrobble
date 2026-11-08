@@ -368,3 +368,41 @@ def test_runs_are_listed_newest_first_and_start_stops(shared_run, tmp_path):
     (tmp_path / "empty" / "recipes").mkdir(parents=True)
     with pytest.raises(RuntimeError, match="no recipes"):
         collage_editor.start(tmp_path / "empty", open_browser=False)
+
+
+# --- the card
+
+
+def test_a_card_is_saved_beside_the_version_and_exported(run, monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["movescrobble", "collage-card", "v01", "--folder", str(run), "--title", "Evening Run",
+                                     "--no-reel"])
+    cli.main()
+    card = json.loads((run / "edited" / "card-v01.json").read_text())
+    title, stats = card["text"]
+    assert title["lines"] == ["Evening Run"] and stats["style"] == "stats"
+    assert stats["lines"][0].startswith("Distance|8.04|km") and card["route"]["width"] >= 12
+    assert Image.open(run / "exported" / "card-v01.jpg").size == (collage.W, collage.H)
+    assert not (run / "exported" / "card-v01.mp4").exists()
+    assert "card-v01.jpg" in capsys.readouterr().out
+    assert json.loads((run / "recipes" / "v01.json").read_text())["text"] != card["text"]  # the version itself stays
+
+
+def test_a_card_for_a_version_without_a_route_borrows_the_runs(run):
+    recipe = json.loads((run / "recipes" / "v01.json").read_text())
+    (run / "edited").mkdir(exist_ok=True)
+    (run / "edited" / "v01.json").write_text(json.dumps({**recipe, "route": None}))  # an edit took the route away
+    card = json.loads(collage.make_card(run, "v01", "", reel=False)[0].read_text())
+    assert card["route"] and [b.get("style") for b in card["text"]] == ["stats"]  # "" leaves the title out
+
+
+def test_the_editor_makes_a_card_of_what_is_on_screen(server):
+    _, port, token, _ = server
+    recipe = first(port, token)
+    carded = ok(port, token, "POST", "/api/card", {"recipe": recipe})["recipe"]
+    assert carded["text"][-1]["style"] == "stats" and carded["pieces"] == recipe["pieces"]
+    ok(port, token, "POST", "/api/save", {"recipe": carded})  # what the card makes, the editor accepts
+    status, _, _ = ask(port, "POST", "/api/preview", {"recipe": carded, "scale": 0.2}, {"X-Token": token})
+    assert status == 200
+    carded["text"][-1]["style"] = "fancy"
+    status, data, _ = ask(port, "POST", "/api/save", {"recipe": carded}, {"X-Token": token})
+    assert status == 400 and b"style" in data

@@ -77,9 +77,11 @@ class Editor:
         self.folder = folder
         self.originals: dict[str, dict] = {}
         self.stats: dict[str, str] = {}
+        self.card_info: dict = {}
         listed = folder / "versions.json"
         if listed.exists():
-            self.stats = json.loads(listed.read_text()).get("stats", {})
+            data = json.loads(listed.read_text())
+            self.stats, self.card_info = data.get("stats", {}), data.get("card") or {}
         for path in sorted((folder / "recipes").glob("*.json")):
             self.originals[path.stem] = json.loads(path.read_text())
         self.edits_dir = folder / "edited"
@@ -143,7 +145,7 @@ class Editor:
                 _finite((piece.get("adjust") or {}).get(name, 0.0), name)
             if piece.get("blend") not in ("normal", "screen"):
                 raise Refused("unknown blend")
-        fonts = set(collage.available_fonts()) | {""}
+        fonts = set(collage.available_fonts()) | {collage.card_font(), ""}
         for block in recipe.get("text") or []:
             if block.get("font") not in fonts:
                 raise Refused("unknown font")
@@ -151,6 +153,8 @@ class Editor:
                 raise Refused("too many lines of type")
             if any(not isinstance(line, str) or len(line) > 120 for line in block["lines"]):
                 raise Refused("a line of type is too long")
+            if block.get("style", "lines") not in ("lines", "stats"):
+                raise Refused("unknown type style")
             if not 8 <= _finite(block.get("size"), "size") <= 400:
                 raise Refused("type size out of range")
             block["size"] = round(block["size"])
@@ -215,6 +219,16 @@ class Editor:
         if not block:
             return []
         return [(-v * block["h"] / 1e5, u * block["w"] / 1e5) for u, v in block["points"]]
+
+    def card(self, recipe: dict) -> dict:
+        """The recipe as a card: title, a column of stats, the route in the circle (see collage.apply_card)."""
+        recipe = self.check(recipe)
+        saved = self.card_info
+        lines = saved.get("lines") or collage.card_lines_from(self.stats)
+        route = collage.route_of(recipe) or next(
+            (r for r in map(collage.route_of, [*self.originals.values(), *self.edits.values()]) if r), None)
+        with self.paint_lock:
+            return collage.apply_card(recipe, lines, saved.get("title", ""), route, self.store)
 
     def draw(self, source: str, layout: str, look: str, seed: int | None = None) -> dict:
         """A new version with the same photos, type and route, in a new composition."""
@@ -412,7 +426,10 @@ class Editor:
             "folder": str(self.folder),
             "versions": rows,
             "stats": self.stats,
-            "fonts": [{"path": f, "name": Path(f).stem if f else "Built in"} for f in collage.available_fonts()],
+            "fonts": [
+                {"path": f, "name": Path(f).stem if f else "Built in"}
+                for f in dict.fromkeys([*collage.available_fonts(), collage.card_font()])
+            ],
             "layouts": list(collage.LAYOUTS),
             "looks": list(collage.LOOKS),
             "photos": [{"key": key, "name": Path(key).name, "aspect": self.store.aspect(key)} for key in self.allowed],
@@ -528,6 +545,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(
                     {"recipe": editor.frame_piece(body["recipe"], int(body.get("index", -1)), str(body.get("mode")))}
                 )
+            if url.path == "/api/card":
+                return self._json({"recipe": editor.card(body["recipe"])})
             if url.path == "/api/place":
                 return self._json({"recipe": editor.place(body["recipe"], str(body.get("what")))})
             if url.path == "/api/export":

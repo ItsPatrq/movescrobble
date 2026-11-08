@@ -190,6 +190,18 @@ def cmd_collage_edit(a) -> None:
         server.shutdown()
 
 
+def cmd_collage_card(a) -> None:
+    from . import collage, collage_editor
+
+    folder = Path(a.folder).expanduser() if a.folder else collage_editor.newest_run(collage.RUNS_HOME)
+    if folder is None:
+        raise SystemExit("no runs yet: make one with `movescrobble collage`, or name a folder")
+    data = _activity_data(a.activity, a.route_trim) if a.activity else None
+    for path in collage.make_card(folder, a.version, a.title, data, not a.no_reel):
+        print(path)
+    print("Open it in the editor to adjust: movescrobble collage-edit", folder)
+
+
 def cmd_collage(a) -> None:
     from . import collage
 
@@ -655,6 +667,17 @@ def main(argv=None) -> None:
     ed.add_argument("--port", type=int, default=0, help="port on 127.0.0.1 (default: any free one)")
     ed.add_argument("--no-browser", action="store_true", help="print the address instead of opening it")
     ed.set_defaults(func=cmd_collage_edit)
+    cc = sub.add_parser("collage-card", help="one version of a run as a card: its name, distance, time, pace, route",
+                        description="Saves the version as card-VERSION beside it, so the editor opens it, and exports a still "
+                                    "and a reel to exported/. Your activity's name is the title, total time and average pace "
+                                    "are by the watch's timer, and the route fills the collage's circle.")
+    cc.add_argument("version", help="which version, such as v13")
+    cc.add_argument("--folder", help="a run's folder (default: the newest under ~/Movies/movescrobble)")
+    cc.add_argument("--title", help="the title (default: the activity's name; \"\" for none)")
+    cc.add_argument("--activity", help="Garmin activity id or 'latest': the name, total time, average pace and route")
+    cc.add_argument("--route-trim", type=float, default=500, metavar="METRES", help="taken off both ends of the route")
+    cc.add_argument("--no-reel", action="store_true", help="the still only")
+    cc.set_defaults(func=cmd_collage_card)
     rc = sub.add_parser("recap", help="swims, minutes, discoveries over the last days")
     rc.add_argument("--days", type=int, default=7)
     rc.set_defaults(func=cmd_recap)
