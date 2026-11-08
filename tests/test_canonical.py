@@ -142,3 +142,14 @@ def test_last_fm_gets_the_bucket_but_local_plays_keep_the_file_tags(db, monkeypa
     assert (sent[0].artist, sent[0].title, sent[0].album) == ("Apparat", "Tilth", "Album")
     assert brainz == sent
     assert [tuple(p) for p in db.execute("SELECT artist, title FROM plays")] == [("Apparat, KÁRYYN", "Tilth")]
+
+
+def test_a_session_settled_meanwhile_is_not_sent_again(db):
+    db.execute("INSERT INTO sessions(id, planned_at, status) VALUES(1, 0, 'planned')")
+    row = db.execute("SELECT * FROM sessions WHERE id=1").fetchone()  # read while still planned
+    db.execute("UPDATE sessions SET status='scrobbled' WHERE id=1")  # then settled by another run
+    sent = []
+    settled = flow.Settled([], [Scrobble(datetime.now(), "A", "T", "", 200)], 5)
+    with pytest.raises(ValueError, match="settled or discarded meanwhile"):
+        flow.submit_session(db, row, settled, Config(), lastfm_submit=sent.extend, listeners=lambda _a, _t: 0)
+    assert sent == []

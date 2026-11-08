@@ -94,6 +94,11 @@ def cmd_scrobble_pending(a) -> None:
         print(f"Garmin: {swim.describe()}")
     settled = flow.settle(json.loads(row["manifest"]), cfg, now, swim, a.played_minutes, parse_positions(a.skip),
                           datetime.fromisoformat(a.start) if a.start else None)
+    if a.submit:
+        try:
+            flow.ensure_pending(db, row)
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
     if _deliver(settled.scrobbles, a, cfg):
         flow.record(db, row, settled)
         flow._set_handled(False)  # lets `on-connect` stage the next session without re-plugging
