@@ -894,15 +894,17 @@ def test_a_card_reads_as_the_watch_does():
 
 
 def test_a_card_puts_title_stats_and_route_where_they_belong():
-    store = collage.PhotoStore({f"#{i}": scene(i) for i in range(4)})
-    version = Version("v01", 7, "orbit", "natural", [f"#{i}" for i in range(4)])
+    store = collage.PhotoStore({**{f"#{i}": scene(i) for i in range(4)}, "#legs": legs_photo()})
+    version = Version("v01", 7, "orbit", "natural", [f"#{i}" for i in range(4)], "#legs")
     recipe = collage.draw_recipe(version, store)
     route = collage.route_from(line_of_points())
     card = collage.apply_card(recipe, ["Distance|8.04|km", "Total time|47:42|", "Avg pace|5:56|/km"], "Warsaw Running",
                               route, store)
     title, stats = card["text"]
     assert title["lines"] == ["Warsaw Running"] and title["y"] >= collage.SAFE_TOP and stats["style"] == "stats"
-    assert stats["y"] + collage._type_image(stats).height <= H - collage.SAFE_BOTTOM
+    tall = collage._type_image(stats).height
+    assert stats["y"] + tall <= H - collage.CARD_BOTTOM
+    assert stats["y"] == min(collage._legs_bottom(card) - collage.CARD_STATS_OVERLAP, H - collage.CARD_BOTTOM - tall)
     cx, cy, r = collage._circle_of(card)
     box = card["route"]
     corners = [(box["x"] + u * box["w"], box["y"] + v * box["h"]) for u in (0, 1) for v in (0, 1)]

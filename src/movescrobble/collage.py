@@ -1661,7 +1661,10 @@ def shows_legs(piece: dict, recipe: dict) -> bool:
 # --- the card: a title, a column of labelled stats, the route in the circle -------------------------------------
 
 CARD_MARGIN = 56
-CARD_ROUTE_FILL = 0.84  # of the circle's diameter, along the route's diagonal
+CARD_ROUTE_FILL = 0.79  # of the circle's diameter, along the route's diagonal
+CARD_STATS_SIZE = 84
+CARD_STATS_OVERLAP = 30  # how far the column may reach up into the leg photo: over the shoes, a little
+CARD_BOTTOM = 200  # the column ends at least this far from the bottom edge
 
 
 def _circle_of(recipe: dict) -> tuple[float, float, float] | None:
@@ -1673,6 +1676,16 @@ def _circle_of(recipe: dict) -> tuple[float, float, float] | None:
         if disc.get("type") == "disc" and piece.get("visible", True):
             found.append((disc["cx"], disc["cy"], disc["r"]))
     return max(found, key=lambda c: c[2], default=None)
+
+
+def _legs_bottom(recipe: dict) -> float | None:
+    """Where the leg photo's visible part ends, down the frame: a card's column starts just above it."""
+    pieces = pieces_of(recipe)
+    legs = [i for i, p in enumerate(recipe["pieces"]) if shows_legs(p, recipe) and p.get("visible", True)]
+    if not legs:
+        return None
+    rows = np.nonzero(np.isin(_owners(pieces), legs).any(1))[0]
+    return float(rows[-1] + 1) if len(rows) else None
 
 
 def card_route(recipe: dict, points: list[list[float]], aspect: float, store: PhotoStore | None = None) -> dict:
@@ -1704,8 +1717,11 @@ def apply_card(recipe: dict, lines: list[str], title: str = "", route: dict | No
         blocks.append({"lines": [title], "size": size, "spacing": 1.0, **common,
                        "x": CARD_MARGIN, "y": SAFE_TOP + 24})
     if lines:
-        stats = {"lines": lines, "size": 100, "spacing": 1.0, "style": "stats", **common, "x": CARD_MARGIN, "y": 0}
-        stats["y"] = H - SAFE_BOTTOM - _type_image(stats).height - 28
+        stats = {"lines": lines, "size": CARD_STATS_SIZE, "spacing": 1.0, "style": "stats", **common, "x": CARD_MARGIN, "y": 0}
+        tall = _type_image(stats).height
+        legs = _legs_bottom(recipe)
+        lowest = H - CARD_BOTTOM - tall
+        stats["y"] = min(legs - CARD_STATS_OVERLAP, lowest) if legs is not None else H - SAFE_BOTTOM - tall - 28
         blocks.append(stats)
     recipe["text"] = blocks
     if route and route.get("points"):
