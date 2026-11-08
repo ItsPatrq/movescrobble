@@ -1516,7 +1516,7 @@ def draw_recipe(version: Version, store: PhotoStore, peek_level: str = "bold", r
                 mapped = dict(mapped, flip=True)
         entries.append(
             {
-                "name": "legs" if piece.peek else f"piece {i + 1}",
+                "name": f"piece {i + 1}",  # "legs" is told by the photo: see shows_legs
                 "shape": piece.shape,
                 "photo": key,
                 "body": piece.peek,
@@ -1583,6 +1583,11 @@ def _picture_below(recipe: dict, store: PhotoStore) -> np.ndarray:
     """The picture without type and route, to find a calm place on, frame-sized."""
     below = paint(recipe, store, 0.5, overlays=False)
     return np.asarray(_to_image(below.final).resize((W, H), Image.Resampling.BILINEAR), dtype=np.float32) / 255
+
+
+def shows_legs(piece: dict, recipe: dict) -> bool:
+    """A piece holds the leg photo: it is told by the photo, so moving that photo to another piece moves this too."""
+    return recipe.get("peek_photo") is not None and piece["photo"] == recipe["peek_photo"]
 
 
 def _piece_picture(piece: dict, recipe: dict, store: PhotoStore, scale: float) -> tuple[np.ndarray, np.ndarray | None]:
@@ -1666,7 +1671,7 @@ def paint(recipe: dict, store: PhotoStore, scale: float = 1.0, overlays: bool = 
         owner[mask * piece.get("opacity", 1.0) > 0.5] = i
         if i == 0:
             base = canvas  # the reel opens on the picture under everything; the other pieces bleed in over it
-        if piece.get("body"):
+        if shows_legs(piece, recipe):
             peek_index, peek_source, peek_mask = i, source, mask
     share = float((owner == peek_index).mean()) if peek_index is not None else 0.0
     params = recipe["grade"]

@@ -299,7 +299,7 @@ class Editor:
         with self.paint_lock:
             picture = collage._picture_below(recipe, self.store)
             owner = collage._owners(collage.pieces_of(recipe))
-            body = next((i for i, p in enumerate(recipe["pieces"]) if p.get("body")), None)
+            body = next((i for i, p in enumerate(recipe["pieces"]) if collage.shows_legs(p, recipe)), None)
             avoid = (owner == body).astype(np.float32) if body is not None else None
             blocks = recipe.get("text") or []
             if what == "text" and blocks:
