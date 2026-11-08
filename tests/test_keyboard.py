@@ -360,3 +360,16 @@ def test_discover_puts_a_pick_first_in_the_playlist_downloading_it(env):
     first = sorted(json.loads(history.pending_session(db)["manifest"])["tracks"], key=lambda t: t["position"])[0]
     assert ("download", "wish1") in fake.calls and (first["artist"], first["title"]) == ("New Artist", "Fresh Song")
     assert first["source"] == "added"
+
+
+def test_collage_from_the_menu_picks_a_run_and_any_key_stops_the_editor(env, tmp_path):
+    runs = [tmp_path / "newer", tmp_path / "older"]
+    for p in runs:
+        p.mkdir()
+    events = []
+    # m = Collage; the run picker: down to the older one, Enter; any key stops the editor; then quit
+    shell, _, _ = keyed_shell(env, ["m", "down", "enter", "any", "q"])
+    shell.act.collage_runs = lambda: runs
+    shell.act.edit_collage = lambda folder: (events.append(folder), (lambda: events.append("stopped"), "http://x"))[1]
+    shell.run()
+    assert events == [runs[1], "stopped"]  # the screen is cleared between steps, so what was said is gone

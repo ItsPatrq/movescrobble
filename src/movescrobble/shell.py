@@ -43,6 +43,7 @@ HELP = """\
 [bold]v[/] recap         the last 7 days of swimming
 [bold]o[/] podcasts      newest unplayed episode per subscription to the headphones
 [bold]n[/] garmin        what the watch recorded: a swim scrobbles the playlist, runs get their tracks
+[bold]m[/] collage       edit a run's collage in your browser: crop, zoom, switch or add photos, filters, export
 [bold]e[/] on-connect    sync the headphones now (podcasts, next playlist once this one is settled)
 [bold]g[/] agent         install / remove the launchd agent that runs the routine when you plug in
 [bold]q[/] quit"""
@@ -73,6 +74,8 @@ class Actions:
     preview_file: Callable[[Track], None] | None = None  # play a clip of a local file
     preview_song: Callable[[str, str], bool] | None = None  # play a clip from YouTube Music; False = not found
     stop_preview: Callable[[], None] = lambda: None
+    collage_runs: Callable[[], list[Path]] = list  # collage runs on disk, newest first
+    edit_collage: Callable[[Path], tuple[Callable[[], None], str]] | None = None  # start the editor: (stop, address)
     show_graph: Callable[[object, set], str] | None = None  # draw the graph in the browser; returns the file
 
 
@@ -667,6 +670,45 @@ class Shell:
         for line in lines:
             self.say(line, markup=False)
 
+    def collage(self) -> None:
+        """The collage editor, in the browser, for as long as you want it."""
+        runs = self.act.collage_runs()
+        if not self.act.edit_collage or not runs:
+            self.say("[yellow]No collages yet: make one with movescrobble collage PHOTOS --activity latest.[/]")
+            return
+        folder = self.pick_run(runs[:9])
+        if folder is None:
+            return
+        stop, address = self.act.edit_collage(folder)
+        try:
+            self.say(f"Editing [bold]{folder.name}[/] in your browser. If it did not open: {address}")
+            self.say(f"Edits save as you go. Exports go to {folder / 'exported'}.", markup=False)
+            if self.keys:
+                self.keys.pause("press any key to stop the editor")
+                self._said = 0
+            else:
+                self.ask("Enter stops the editor")
+        finally:
+            time.sleep(0.6)  # the page saves half a second after your last change
+            stop()
+
+    def pick_run(self, runs: list[Path]) -> Path | None:
+        if len(runs) == 1:
+            return runs[0]
+        labels = [f"{p.name}  ·  {datetime.fromtimestamp(p.stat().st_mtime):%d %b %H:%M}" for p in runs]
+        if self.keys:
+            key = self.keys.menu([Item(str(i), label) for i, label in enumerate(labels, 1)], title="Which collage?")
+            return runs[int(key) - 1] if key else None
+        for i, label in enumerate(labels, 1):
+            self.say(f"  {i}. {label}", markup=False)
+        answer = self.ask("Which collage? (number, blank = newest)").strip()
+        if not answer:
+            return runs[0]
+        if answer.isdigit() and 1 <= int(answer) <= len(runs):
+            return runs[int(answer) - 1]
+        self.say("[yellow]no such collage[/]")
+        return None
+
     def on_connect(self) -> None:
         with self.busy("syncing the headphones"):
             log = self.act.on_connect()
@@ -686,12 +728,12 @@ class Shell:
             "p": self.playlist, "r": self.reroll, "a": self.add_track, "s": self.stats, "w": self.wishlist,
             "y": self.sync, "c": self.scrobble, "k": self.skip, "u": self.leftovers,
             "o": self.podcasts, "v": self.recap, "b": self.blocklist, "d": self.discover,
-            "e": self.on_connect, "g": self.agent, "n": self.activities,
+            "e": self.on_connect, "g": self.agent, "n": self.activities, "m": self.collage,
             "?": lambda: self.say(HELP), "h": lambda: self.say(HELP),
         }
         names = {"playlist": "p", "reroll": "r", "add": "a", "stats": "s", "wishlist": "w", "sync": "y", "scrobble": "c",
                  "skip": "k", "discover": "d", "podcasts": "o", "blocklist": "b", "recap": "v", "on-connect": "e", "garmin": "n",
-                 "agent": "g", "help": "?", "quit": "q", "exit": "q"}
+                 "collage": "m", "agent": "g", "help": "?", "quit": "q", "exit": "q"}
         if self.keys:
             return self.run_keys(handlers)
         self.dashboard()
@@ -733,6 +775,7 @@ class Shell:
         Item("b", "Blocklist", "artists and tracks you never want to hear"),
         Item("o", "Podcasts", "newest unplayed episodes"),
         Item("n", "Garmin", "swims and runs the watch recorded"),
+        Item("m", "Collage", "edit a run's collage in your browser"),
         Item("e", "On-connect", "sync the headphones now"),
         Item("g", "Agent", "install / remove the plug-in agent"),
         Item("?", "Help", "what everything does"),
@@ -1257,6 +1300,16 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
     def agent_set(on: bool) -> None:
         launchd.install(os.getuid()) if on else launchd.uninstall(os.getuid())
 
+    def collage_runs() -> list[Path]:
+        from . import collage, collage_editor
+
+        return collage_editor.runs(collage.RUNS_HOME)
+
+    def edit_collage(folder: Path):
+        from . import collage_editor
+
+        return collage_editor.start(folder)
+
     return Actions(
         load_library=lambda: scan_config(cfg),
         features=lambda t: cached_features(db, t),
@@ -1271,4 +1324,5 @@ def real_actions(cfg: Config, db, progress: flow.Progress = flow._quiet) -> Acti
         recommend=recommend if cfg.lastfm_user else None, show_graph=show_graph, stop_preview=player.stop,
         preview_file=lambda t: player.play_file(t.path, t.duration), preview_song=player.play_song,
         agent_installed=lambda: Path(launchd.PLIST).exists(), agent_set=agent_set,
+        collage_runs=collage_runs, edit_collage=edit_collage,
     )

@@ -1,0 +1,1419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collage editor</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  --bg: #141413; --panel: #1d1c1a; --panel2: #262522; --line: #38362f; --text: #ece9e1; --dim: #a5a196;
+  --accent: #e9a15b; --accent2: #7fb7d9; --bad: #e07a6b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: grid; grid-template-rows: 44px 1fr; overflow: hidden; }
+header { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 13px; margin: 0 8px 0 0; font-weight: 600; white-space: nowrap; }
+header .spring { flex: 1; }
+#status { color: var(--dim); min-width: 150px; text-align: right; white-space: nowrap; overflow: hidden; }
+#status.bad { color: var(--bad); }
+main { display: grid; grid-template-columns: 188px 1fr 330px; min-height: 0; }
+button, select, input[type=text], input[type=number], textarea {
+  font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 4px 8px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--dim); }
+button:disabled { opacity: .4; cursor: default; }
+button.on, button.primary { background: var(--accent); border-color: var(--accent); color: #1c1407; font-weight: 600; }
+button.link { background: none; border: none; color: var(--accent2); padding: 2px 0; }
+:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+.group { display: flex; gap: 2px; }
+.group button { border-radius: 0; }
+.group button:first-child { border-radius: 5px 0 0 5px; }
+.group button:last-child { border-radius: 0 5px 5px 0; }
+
+#left { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+#versions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.version { position: relative; padding: 0; background: #000; border: 2px solid transparent; border-radius: 5px; overflow: hidden; aspect-ratio: 9 / 16; }
+.version.current { border-color: var(--accent); }
+.version img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.version span { position: absolute; left: 0; right: 0; bottom: 0; font-size: 10px; padding: 8px 3px 2px; text-align: left;
+  background: linear-gradient(transparent, #000c); color: #fff; }
+.version i { position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+#centre { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #0d0d0c; }
+#tools { display: flex; flex-wrap: wrap; gap: 8px; padding: 7px 10px; align-items: center; border-bottom: 1px solid var(--line); background: var(--panel); }
+#tools label { color: var(--dim); display: flex; gap: 4px; align-items: center; }
+#stageWrap { flex: 1; min-height: 0; overflow: auto; display: flex; padding: 14px; }
+#stage { position: relative; margin: auto; height: 100%; aspect-ratio: 9 / 16; background: #000; flex: none; box-shadow: 0 0 0 1px var(--line); touch-action: none; }
+#view, #over { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+#over { overflow: hidden; }
+.cut { fill: transparent; stroke: transparent; stroke-width: 2; cursor: grab; fill-rule: evenodd; vector-effect: non-scaling-stroke; }
+.outlines .cut { stroke: #ffffff30; }
+.cut:hover { stroke: #ffffff90; }
+.cut.sel { stroke: var(--accent); stroke-width: 2; }
+.cut.isbody.sel { stroke: var(--accent2); }
+.handle { fill: #fff; stroke: #000; stroke-width: 1; cursor: move; vector-effect: non-scaling-stroke; }
+.handle.mid { fill: var(--accent); }
+.handle:hover { fill: var(--accent2); }
+.box { fill: transparent; stroke: #ffffff30; stroke-dasharray: 8 8; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: move; }
+.box:hover { stroke: #ffffffa0; }
+.box.sel { stroke: var(--accent); stroke-dasharray: none; stroke-width: 2; }
+.safe { fill: #e07a6b30; pointer-events: none; }
+.safeText { fill: #ffffffb0; font-size: 26px; pointer-events: none; }
+.guide { stroke: #ffffff50; stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
+
+#right { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+#tabs { display: flex; border-bottom: 1px solid var(--line); }
+#tabs button { flex: 1; border: none; border-radius: 0; background: none; color: var(--dim); padding: 9px 2px; border-bottom: 2px solid transparent; }
+#tabs button.on { color: var(--text); font-weight: 600; border-bottom-color: var(--accent); }
+#panel { overflow-y: auto; padding: 12px; flex: 1; }
+h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 16px 0 6px; font-weight: 600; }
+h2:first-child { margin-top: 0; }
+.row { display: grid; grid-template-columns: 82px 1fr 46px; align-items: center; gap: 6px; margin: 5px 0; }
+.row input[type=range] { width: 100%; accent-color: var(--accent); }
+.row output { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 11px; }
+.line { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 5px 0; }
+.line label { color: var(--dim); }
+.hint { color: var(--dim); font-size: 11px; margin: 4px 0; }
+.layers { display: flex; flex-direction: column; gap: 2px; }
+.layer { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; }
+.layer:hover { background: var(--panel2); }
+.layer.sel { border-color: var(--accent); background: var(--panel2); }
+.layer img { width: 26px; height: 34px; object-fit: cover; border-radius: 3px; }
+.layer span { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.layer button { padding: 0 5px; }
+.tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.tile { padding: 0; aspect-ratio: 3 / 4; overflow: hidden; border: 2px solid transparent; background: #000; }
+.tile.on { border-color: var(--accent); }
+.tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chips button { font-size: 11px; padding: 2px 7px; border-radius: 10px; }
+textarea { width: 100%; resize: vertical; min-height: 64px; }
+select { max-width: 100%; }
+video { width: 100%; border-radius: 5px; background: #000; margin-top: 6px; }
+kbd { background: var(--panel2); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font: 10px ui-monospace, monospace; }
+.exports { display: flex; flex-direction: column; gap: 3px; }
+.meter { height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin: 6px 0; }
+.meter div { height: 100%; width: 0; background: var(--accent); }
+.crop { position: relative; margin: 14px auto 10px; background: #000; touch-action: none; }
+.crop img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+.crop svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }  /* a crop past the photo's edge stays in reach */
+.crop .shade { fill: #000000b0; fill-rule: evenodd; pointer-events: none; }
+.crop .window { fill: transparent; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; cursor: move; }
+.crop .corner { fill: #fff; stroke: #000; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: nwse-resize; }
+#stage.dropping { box-shadow: 0 0 0 3px var(--accent2); }
+@media (max-width: 1050px) { main { grid-template-columns: 130px 1fr 290px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Collage editor</h1>
+  <div class="group">
+    <button id="undo" title="Undo (⌘Z)" data-testid="undo">Undo</button>
+    <button id="redo" title="Redo (⇧⌘Z)" data-testid="redo">Redo</button>
+  </div>
+  <button id="before" title="Hold to see this version as it was drawn (B)" data-testid="before">Before</button>
+  <button id="revert" data-testid="revert">Revert version</button>
+  <span class="spring"></span>
+  <span id="share" class="hint" data-testid="share"></span>
+  <span id="status" role="status" data-testid="status">Loading</span>
+</header>
+<main>
+  <aside id="left">
+    <div>
+      <h2>Versions</h2>
+      <div id="versions" data-testid="versions"></div>
+    </div>
+    <div>
+      <h2>New version</h2>
+      <div class="line"><select id="newLayout" aria-label="Layout" data-testid="new-layout"></select></div>
+      <div class="line"><select id="newLook" aria-label="Look" data-testid="new-look"></select></div>
+      <div class="line"><button id="draw" data-testid="draw">Draw</button></div>
+      <p class="hint">Same photos, type and route, in a new composition. Your other versions stay.</p>
+    </div>
+  </aside>
+  <section id="centre">
+    <div id="tools">
+      <div class="group" role="group" aria-label="Tool">
+        <button data-tool="picture" title="Drag moves the photo inside its shape (1)" data-testid="tool-picture">Picture</button>
+        <button data-tool="shape" title="Drag moves shapes and seams (2)" data-testid="tool-shape">Shape</button>
+      </div>
+      <label><input type="checkbox" id="seams" checked data-testid="link-seams"> Move touching seams together</label>
+      <label><input type="checkbox" id="follow" checked data-testid="follow"> Picture follows shape</label>
+      <label><input type="checkbox" id="stay" checked data-testid="stay"> Keep photo filling its shape</label>
+      <label><input type="checkbox" id="safeZones" checked data-testid="safe-zones"> Instagram UI</label>
+      <label><input type="checkbox" id="outlines" data-testid="outlines"> Outlines</label>
+      <label>Zoom <select id="zoom" data-testid="zoom"><option value="1">Fit</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select></label>
+    </div>
+    <div id="stageWrap">
+      <div id="stage" data-testid="stage">
+        <img id="view" alt="Preview of the collage" data-testid="view" draggable="false">
+        <svg id="over" viewBox="0 0 1080 1920" data-testid="overlay" aria-label="Pieces of the collage"></svg>
+      </div>
+    </div>
+  </section>
+  <aside id="right">
+    <div id="tabs" role="tablist"></div>
+    <div id="panel" data-testid="panel"></div>
+  </aside>
+</main>
+<input type="file" id="photoFile" accept="image/*,.heic,.heif" multiple hidden data-testid="add-photo-input">
+<script>
+"use strict";
+const TOKEN = "__TOKEN__";
+const S = {
+  info: null, recipe: null, original: null, kind: "piece", sel: -1, tool: "picture", tab: "Pieces",
+  undo: [], redo: [], last: "", boxes: [], thumbs: new Map(), reelFrames: null, playing: false, saving: Promise.resolve(),
+};
+const $ = (q) => document.querySelector(q);
+const currentId = () => S.recipe && S.recipe.id;
+const el = (tag, props = {}, ...kids) => {
+  const node = Object.assign(document.createElement(tag), props);
+  for (const kid of kids) if (kid != null) node.append(kid);
+  return node;
+};
+const clone = (v) => JSON.parse(JSON.stringify(v));
+
+function setStatus(text, bad = false) {
+  const node = $("#status");
+  node.textContent = text;
+  node.classList.toggle("bad", bad);
+}
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let message = res.statusText;
+    try { message = (await res.json()).error || message; } catch (e) { /* not JSON */ }
+    throw new Error(message);
+  }
+  return res;
+}
+const apiJson = async (path, body) => (await api(path, body)).json();
+const photoUrl = (key, h = 160) => `/api/photo?t=${encodeURIComponent(TOKEN)}&h=${h}&key=${encodeURIComponent(key)}`;
+
+// --- preview: one request at a time; the newest change wins; sharper when you stop
+
+let busy = false, again = false, sharpTimer = null, interacting = false, settled = Promise.resolve(), settle = null;
+
+function requestPreview() {
+  clearTimeout(sharpTimer);
+  if (!settle) settled = new Promise((resolve) => { settle = resolve; });
+  if (busy) { again = true; return; }
+  pump(0.34);
+}
+
+function sharpenAfter(ms) {
+  sharpTimer = setTimeout(() => { if (interacting) sharpenAfter(200); else pump(0.8); }, ms);
+}
+
+// What the page shows. A picture nobody else keeps goes when the next one comes; thumbnails, frames and Before stay.
+let passing = null;
+function show(url, kept = false) {
+  $("#view").src = url;
+  if (passing) URL.revokeObjectURL(passing);
+  passing = kept ? null : url;
+}
+
+async function pump(scale) {
+  busy = true;
+  try {
+    do {
+      again = false;
+      const recipe = S.recipe;
+      const res = await api("/api/preview", { recipe, scale });
+      const info = JSON.parse(res.headers.get("X-Info"));
+      const url = URL.createObjectURL(await res.blob());
+      const view = $("#view");
+      await new Promise((resolve) => { view.onload = resolve; view.onerror = resolve; show(url); });
+      if (recipe === S.recipe) {
+        S.boxes = info.boxes;
+        $("#share").textContent = info.share ? `legs ${(info.share * 100).toFixed(0)}% of frame` : "";
+        drawOverlay();
+      }
+      if (again) scale = 0.34;
+    } while (again);
+    setStatus(S.dirty ? "Saving…" : "Saved");
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+  busy = false;
+  if (again) return pump(0.34);
+  if (scale < 0.8) sharpenAfter(180);
+  else if (settle) { settle(); settle = null; }
+}
+
+// --- changes: every one reaches the preview and is saved; a finished gesture becomes an undo step
+
+let saveTimer = null;
+function touched() {
+  S.dirty = true;
+  dropReelFrames();
+  drawOverlay();
+  if (S.cropRedraw) S.cropRedraw();
+  requestPreview();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 500);
+}
+function dropReelFrames() {
+  (S.reelFrames || []).forEach((url) => URL.revokeObjectURL(url));
+  S.reelFrames = null;
+}
+function changed() { touched(); commit(); renderPanel(); }
+function save() {
+  if (S.dirty) {
+    S.dirty = false;
+    const recipe = S.recipe;
+    S.saving = S.saving.then(() => send(recipe));
+  }
+  return S.saving;
+}
+async function send(recipe) {
+  try {
+    await api("/api/save", { recipe });
+    const row = S.info.versions.find((v) => v.id === recipe.id);
+    if (row && !row.edited) { row.edited = true; renderVersions(); updateButtons(); }
+    if (!busy) setStatus("Saved");
+  } catch (error) { setStatus(error.message, true); }
+}
+function commit() {
+  const now = JSON.stringify(S.recipe);
+  if (now === S.last) return;
+  S.undo.push(S.last);
+  if (S.undo.length > 200) S.undo.shift();
+  S.redo = [];
+  S.last = now;
+  updateButtons();
+}
+function restore(text) {
+  S.recipe = JSON.parse(text);
+  S.last = text;
+  if (S.kind === "piece" && S.sel >= S.recipe.pieces.length) S.sel = -1;
+  if (S.kind === "text" && S.sel >= (S.recipe.text || []).length) { S.kind = "piece"; S.sel = -1; }
+  updateButtons();
+  renderPanel();
+  touched();
+}
+function undo() { if (S.undo.length) { S.redo.push(S.last); restore(S.undo.pop()); } }
+function redo() { if (S.redo.length) { S.undo.push(S.last); restore(S.redo.pop()); } }
+function updateButtons() {
+  $("#undo").disabled = !S.undo.length;
+  $("#redo").disabled = !S.redo.length;
+  const row = S.info && S.info.versions.find((v) => v.id === currentId());
+  $("#revert").disabled = !S.original || !(row && row.edited);
+}
+
+// --- shapes as SVG paths, to pick and to show what is selected
+
+function circle(cx, cy, r) {
+  return `M${cx - r} ${cy}A${r} ${r} 0 1 0 ${cx + r} ${cy}A${r} ${r} 0 1 0 ${cx - r} ${cy}Z`;
+}
+function shapePath(s) {
+  switch (s.type) {
+    case "full": return `M0 0H${S.info.frame.w}V${S.info.frame.h}H0Z`;
+    case "noise": return `M0 0H${S.info.frame.w}V${S.info.frame.h}H0Z`;
+    case "poly": return "M" + s.points.map((p) => `${p[0]} ${p[1]}`).join("L") + "Z";
+    case "disc": return circle(s.cx, s.cy, s.r);
+    case "ring": {
+      if (s.sweep === undefined) return circle(s.cx, s.cy, s.r1) + circle(s.cx, s.cy, s.r0);
+      const at = (r, a) => `${s.cx + r * Math.cos(a)} ${s.cy + r * Math.sin(a)}`;
+      const end = s.start + s.sweep, large = s.sweep > Math.PI ? 1 : 0;
+      return `M${at(s.r1, s.start)}A${s.r1} ${s.r1} 0 ${large} 1 ${at(s.r1, end)}L${at(s.r0, end)}A${s.r0} ${s.r0} 0 ${large} 0 ${at(s.r0, s.start)}Z`;
+    }
+    case "arch": {
+      const r = (s.x1 - s.x0) / 2;
+      return `M${s.x0} ${s.bottom}V${s.top + r}A${r} ${r} 0 0 1 ${s.x1} ${s.top + r}V${s.bottom}Z`;
+    }
+    case "union": return s.parts.map(shapePath).join("");
+    case "minus": return shapePath(s.base);
+    default: return "";
+  }
+}
+function moveShape(s, dx, dy) {
+  switch (s.type) {
+    case "poly": s.points.forEach((p) => { p[0] += dx; p[1] += dy; }); break;
+    case "disc": case "ring": s.cx += dx; s.cy += dy; break;
+    case "arch": s.x0 += dx; s.x1 += dx; s.top += dy; s.bottom += dy; break;
+    case "union": s.parts.forEach((part) => moveShape(part, dx, dy)); break;
+    case "minus": moveShape(s.base, dx, dy); break;
+    default: break;
+  }
+}
+const NS = "http://www.w3.org/2000/svg";
+const svg = (tag, attrs = {}) => {
+  const node = document.createElementNS(NS, tag);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  return node;
+};
+
+function drawOverlay() {
+  const over = $("#over");
+  if (!S.recipe) return;
+  over.replaceChildren();
+  over.classList.toggle("outlines", $("#outlines").checked);
+  S.recipe.pieces.forEach((piece, i) => {
+    if (piece.visible === false) return;
+    const selected = S.kind === "piece" && S.sel === i;
+    const path = svg("path", { d: shapePath(piece.shape), class: `cut${selected ? " sel" : ""}${piece.body ? " isbody" : ""}` });
+    path.dataset.role = "piece";
+    path.dataset.index = i;
+    path.dataset.testid = `piece-${i}`;
+    over.append(path);
+  });
+  if (S.recipe.route && S.recipe.route.visible !== false) {
+    const r = S.recipe.route;
+    const box = svg("rect", { x: r.x - 8, y: r.y - 8, width: r.w + 16, height: r.h + 16, class: `box${S.kind === "route" ? " sel" : ""}` });
+    box.dataset.role = "route";
+    box.dataset.testid = "route-box";
+    over.append(box);
+    if (S.kind === "route") over.append(handle(r.x + r.w + 8, r.y + r.h + 8, "routeSize", 0));
+  }
+  (S.recipe.text || []).forEach((block, i) => {
+    if (block.visible === false || !S.boxes[i]) return;
+    const [x, y, w, h] = S.boxes[i];
+    const selected = S.kind === "text" && S.sel === i;
+    const box = svg("rect", { x: x - 6, y: y - 6, width: w + 12, height: h + 12, class: `box${selected ? " sel" : ""}` });
+    box.dataset.role = "text";
+    box.dataset.index = i;
+    box.dataset.testid = `text-box-${i}`;
+    over.append(box);
+    if (selected) over.append(handle(x + w + 6, y + h + 6, "textSize", i));
+  });
+  if (S.tool === "shape" && S.kind === "piece" && S.sel >= 0) drawHandles(S.recipe.pieces[S.sel].shape);
+  if ($("#safeZones").checked) {
+    const f = S.info.frame;
+    for (const [x, y, w, h, words] of [[0, 0, f.w, f.top, "profile"], [0, f.h - f.bottom, f.w, f.bottom, "caption"], [f.w - f.right, f.top, f.right, f.h - f.top - f.bottom, ""]]) {
+      over.append(svg("rect", { x, y, width: w, height: h, class: "safe" }));
+      if (words) { const t = svg("text", { x: x + 14, y: y + 34, class: "safeText" }); t.textContent = words; over.append(t); }
+    }
+  }
+  if (S.guides) for (const [x1, y1, x2, y2] of S.guides) over.append(svg("line", { x1, y1, x2, y2, class: "guide" }));
+}
+
+function handle(x, y, kind, index, mid = false) {
+  const node = svg("circle", { cx: x, cy: y, r: 13, class: `handle${mid ? " mid" : ""}` });
+  node.dataset.role = "handle";
+  node.dataset.kind = kind;
+  node.dataset.index = index;
+  node.dataset.testid = `handle-${kind}-${index}`;
+  return node;
+}
+
+function drawHandles(s) {
+  const over = $("#over");
+  if (s.type === "poly") {
+    s.points.forEach((p, i) => {
+      over.append(handle(p[0], p[1], "vertex", i));
+      const q = s.points[(i + 1) % s.points.length];
+      over.append(handle((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, "edge", i, true));
+    });
+  } else if (s.type === "disc" || (s.type === "union" && s.parts[0].type === "disc")) {
+    const d = s.type === "union" ? s.parts[0] : s;
+    over.append(handle(d.cx, d.cy, "centre", 0));
+    over.append(handle(d.cx - d.r, d.cy, "radius", 0, true));
+  } else if (s.type === "ring") {
+    const mid = s.sweep === undefined ? Math.PI : s.start + s.sweep / 2;
+    const at = (r, a = mid) => [s.cx + r * Math.cos(a), s.cy + r * Math.sin(a)];
+    const r1 = Math.min(s.r1, Math.hypot(s.cx, s.cy));
+    over.append(handle(...at(s.r0), "r0", 0, true));
+    over.append(handle(...at(r1), "r1", 0, true));
+    if (s.sweep !== undefined) {
+      const r = (s.r0 + r1) / 2;
+      over.append(handle(...at(r, s.start), "start", 0));
+      over.append(handle(...at(r, s.start + s.sweep), "end", 0));
+    }
+  } else if (s.type === "arch") {
+    const mx = (s.x0 + s.x1) / 2, my = (s.top + s.bottom) / 2;
+    over.append(handle(s.x0, my, "x0", 0, true));
+    over.append(handle(s.x1, my, "x1", 0, true));
+    over.append(handle(mx, s.top, "top", 0, true));
+    over.append(handle(mx, s.bottom, "bottom", 0, true));
+  }
+}
+
+// --- picture maps: photo point = c + k R (frame point - f)
+
+function mapPoint(m, x, y) {
+  const a = m.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  const dx = (x - m.fx) * m.k, dy = (y - m.fy) * m.k;
+  return [m.cx + dx * c - dy * s, m.cy + dx * s + dy * c];
+}
+function zoomAbout(m, x, y, factor) {
+  const k = Math.min(1, Math.max(1e-5, m.k / factor));
+  const scale = m.k / k;
+  m.fx = x - (x - m.fx) * scale;
+  m.fy = y - (y - m.fy) * scale;
+  m.k = k;
+}
+function turnAbout(m, x, y, rot) {
+  const before = mapPoint(m, x, y);
+  m.rot = rot;
+  const after = mapPoint(m, x, y);
+  m.cx += before[0] - after[0];
+  m.cy += before[1] - after[1];
+}
+function slideMap(m, dx, dy) { m.fx += dx; m.fy += dy; }
+function aspectOf(key) {
+  const row = S.info.photos.find((p) => p.key === key);
+  return row ? row.aspect : 0.75;
+}
+function pieceBox(i) {
+  const node = $(`#over path[data-index="${i}"]`);
+  if (!node) return null;
+  const b = node.getBBox();
+  const x0 = Math.max(0, b.x), y0 = Math.max(0, b.y);
+  return { x0, y0, x1: Math.min(S.info.frame.w, b.x + b.width), y1: Math.min(S.info.frame.h, b.y + b.height) };
+}
+function middleOf(i) {
+  const box = pieceBox(i) || { x0: 0, x1: S.info.frame.w, y0: 0, y1: S.info.frame.h };
+  return [(box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2];
+}
+// With "keep photo filling its shape" on, the photo cannot slide off what the shape shows.
+function keepFilling(i) {
+  if (!$("#stay").checked) return;
+  const piece = S.recipe.pieces[i], m = piece.map;
+  if (m.rot) return;
+  const box = pieceBox(i);
+  if (!box) return;
+  const aspect = aspectOf(piece.photo);
+  const most = Math.min(aspect / Math.max(1, box.x1 - box.x0), 1 / Math.max(1, box.y1 - box.y0));
+  if (m.k > most) zoomAbout(m, (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2, m.k / most);
+  const [left, top] = mapPoint(m, box.x0, box.y0);
+  const [right, bottom] = mapPoint(m, box.x1, box.y1);
+  if (left < 0) m.fx += left / m.k;
+  if (right > aspect) m.fx += (right - aspect) / m.k;
+  if (top < 0) m.fy += top / m.k;
+  if (bottom > 1) m.fy += (bottom - 1) / m.k;
+}
+
+// --- gestures
+
+let drag = null;
+function framePoint(event) {
+  const over = $("#over");
+  const point = over.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  const p = point.matrixTransform(over.getScreenCTM().inverse());
+  return [p.x, p.y];
+}
+function select(kind, index) {
+  const changed = S.kind !== kind || S.sel !== index;
+  S.kind = kind;
+  S.sel = index;
+  if (changed) {
+    if (kind === "text") S.tab = "Type";
+    if (kind === "route") S.tab = "Route";
+    if (kind === "piece" && (S.tab === "Type" || S.tab === "Route")) S.tab = "Pieces";
+    renderTabs();
+    renderPanel();
+  }
+}
+function neighbours(s, p) {
+  const found = [];
+  if (!$("#seams").checked) return found;
+  for (const piece of S.recipe.pieces) {
+    if (piece.shape.type !== "poly" || piece.shape === s) continue;
+    for (const q of piece.shape.points) if (Math.hypot(q[0] - p[0], q[1] - p[1]) < 34) found.push(q);
+  }
+  for (const q of s.points) if (q !== p && Math.hypot(q[0] - p[0], q[1] - p[1]) < 34) found.push(q);
+  return found;
+}
+function startDrag(event) {
+  if (event.button !== 0) return;
+  const target = event.target;
+  const role = target.dataset && target.dataset.role;
+  if (!role) { select("piece", -1); drawOverlay(); return; }
+  const [x, y] = framePoint(event);
+  const index = Number(target.dataset.index);
+  drag = { role, x, y, moved: false, index };
+  if (role === "piece") {
+    select("piece", index);
+    drag.mode = S.tool;
+  } else if (role === "text") {
+    select("text", index);
+  } else if (role === "route") {
+    select("route", 0);
+  } else if (role === "handle") {
+    drag.kind = target.dataset.kind;
+    if (drag.kind !== "routeSize" && drag.kind !== "textSize") {
+      drag.shape = S.recipe.pieces[S.sel].shape;
+      if (drag.kind === "vertex") {
+        drag.points = [drag.shape.points[index], ...neighbours(drag.shape, drag.shape.points[index])];
+      } else if (drag.kind === "edge") {
+        const a = drag.shape.points[index], b = drag.shape.points[(index + 1) % drag.shape.points.length];
+        drag.points = [...new Set([a, b, ...neighbours(drag.shape, a), ...neighbours(drag.shape, b)])];
+      } else if (["r0", "r1"].includes(drag.kind) && $("#seams").checked) {
+        const s = drag.shape, r = s[drag.kind];
+        drag.linked = S.recipe.pieces.map((p) => p.shape).filter((o) => o !== s && (o.type === "ring" || o.type === "disc") && Math.abs(o.cx - s.cx) < 1 && Math.abs(o.cy - s.cy) < 1).flatMap((o) => {
+          const pairs = o.type === "disc" ? [[o, "r"]] : [[o, "r0"], [o, "r1"]];
+          return pairs.filter(([owner, name]) => Math.abs(owner[name] - r) < 50);
+        });
+      }
+    }
+  }
+  interacting = true;
+  $("#over").setPointerCapture(event.pointerId);
+  event.preventDefault();
+}
+function snap(value, targets, event, guide) {
+  if (event.altKey) return value;
+  for (const t of targets) if (Math.abs(value - t) < 12) { if (guide) guide(t); return t; }
+  return value;
+}
+function moveDrag(event) {
+  if (!drag) return;
+  const [x, y] = framePoint(event);
+  const dx = x - drag.x, dy = y - drag.y;
+  if (!dx && !dy) return;
+  drag.x = x; drag.y = y; drag.moved = true;
+  const f = S.info.frame;
+  S.guides = null;
+  if (drag.role === "piece") {
+    const piece = S.recipe.pieces[drag.index];
+    if (drag.mode === "picture") {
+      slideMap(piece.map, dx, dy);
+      keepFilling(drag.index);
+    } else {
+      moveShape(piece.shape, dx, dy);
+      if ($("#follow").checked) slideMap(piece.map, dx, dy);
+    }
+  } else if (drag.role === "text") {
+    const b = S.recipe.text[drag.index];
+    drag.ax = (drag.ax ?? b.x) + dx; drag.ay = (drag.ay ?? b.y) + dy;
+    const box = S.boxes[drag.index] || [0, 0, 0, 0];
+    const guides = [];
+    b.x = snap(drag.ax, [42, f.w - f.right - box[2]], event, (t) => guides.push([t, 0, t, f.h]));
+    b.y = snap(drag.ay, [f.top + 20, f.h - f.bottom - 20 - box[3]], event, (t) => guides.push([0, t, f.w, t]));
+    S.boxes[drag.index] = [b.x, b.y, box[2], box[3]];
+    S.guides = guides;
+  } else if (drag.role === "route") {
+    const r = S.recipe.route;
+    drag.ax = (drag.ax ?? r.x) + dx; drag.ay = (drag.ay ?? r.y) + dy;
+    const guides = [];
+    r.x = snap(drag.ax, [42, f.w - f.right - r.w - 20], event, (t) => guides.push([t, 0, t, f.h]));
+    r.y = snap(drag.ay, [f.top + 30, f.h - f.bottom - 30 - r.h], event, (t) => guides.push([0, t, f.w, t]));
+    S.guides = guides;
+  } else if (drag.role === "handle") {
+    dragHandle(dx, dy, x, y, event);
+  }
+  touched();
+}
+function dragHandle(dx, dy, x, y, event) {
+  const kind = drag.kind;
+  if (kind === "routeSize") {
+    const r = S.recipe.route;
+    const w = Math.max(40, x - 8 - r.x), ratio = r.h / r.w;
+    r.h = event.shiftKey ? Math.max(40, y - 8 - r.y) : w * ratio;  // Shift lets go of its proportions
+    r.w = w;
+    return;
+  }
+  if (kind === "textSize") {
+    const b = S.recipe.text[drag.index], box = S.boxes[drag.index];
+    drag.base = drag.base ?? b.size;
+    drag.baseH = drag.baseH ?? box[3];
+    b.size = Math.round(Math.min(400, Math.max(8, drag.base * ((y - 6 - b.y) / Math.max(1, drag.baseH)))));
+    return;
+  }
+  const s = drag.shape;
+  if (kind === "vertex" || kind === "edge") {
+    drag.points.forEach((p) => { p[0] += dx; p[1] += dy; });
+  } else if (kind === "centre") {
+    moveShape(s, dx, dy);
+    if ($("#follow").checked) slideMap(S.recipe.pieces[S.sel].map, dx, dy);
+  } else if (kind === "radius") {
+    const d = s.type === "union" ? s.parts[0] : s;
+    const r = Math.max(20, Math.hypot(x - d.cx, y - d.cy));
+    const change = r - d.r;
+    d.r = r;
+    if (s.type === "union") s.parts.slice(1).forEach((part) => { part.r0 += change; part.r1 += change; });
+  } else if (kind === "r0" || kind === "r1") {
+    const r = Math.hypot(x - s.cx, y - s.cy);
+    const change = r - s[kind];
+    s[kind] = kind === "r0" ? Math.min(r, s.r1 - 4) : Math.max(r, s.r0 + 4);
+    (drag.linked || []).forEach(([owner, name]) => { owner[name] += change; });
+  } else if (kind === "start" || kind === "end") {
+    let a = Math.atan2(y - s.cy, x - s.cx);
+    const two = 2 * Math.PI;
+    if (kind === "start") {
+      const end = s.start + s.sweep;
+      while (a > end) a -= two;
+      while (a < end - two) a += two;
+      s.sweep = end - a; s.start = a;
+    } else {
+      while (a < s.start) a += two;
+      while (a > s.start + two) a -= two;
+      s.sweep = a - s.start;
+    }
+  } else if (kind === "x0") { s.x0 = Math.min(x, s.x1 - 40);
+  } else if (kind === "x1") { s.x1 = Math.max(x, s.x0 + 40);
+  } else if (kind === "top") { s.top = Math.min(y, s.bottom - 40);
+  } else if (kind === "bottom") { s.bottom = Math.max(y, s.top + 40);
+  }
+}
+function endDrag(event) {
+  if (!drag) return;
+  const moved = drag.moved;
+  drag = null;
+  S.guides = null;
+  interacting = false;
+  try { $("#over").releasePointerCapture(event.pointerId); } catch (e) { /* already released */ }
+  if (moved) { commit(); renderPanel(); }
+  drawOverlay();
+}
+function wheel(event) {
+  if (S.kind !== "piece" || S.sel < 0) {
+    const target = event.target.dataset && event.target.dataset.role === "piece" ? Number(event.target.dataset.index) : -1;
+    if (target < 0) return;
+    select("piece", target);
+  }
+  event.preventDefault();
+  const piece = S.recipe.pieces[S.sel];
+  const [x, y] = framePoint(event);
+  if (event.shiftKey) {
+    turnAbout(piece.map, x, y, piece.map.rot + (event.deltaY || event.deltaX) * 0.05);
+  } else {
+    zoomAbout(piece.map, x, y, Math.exp(-event.deltaY * 0.0015));
+    keepFilling(S.sel);
+  }
+  touched();
+  clearTimeout(S.wheelEnd);
+  S.wheelEnd = setTimeout(() => { commit(); renderPanel(); }, 300);
+}
+
+// --- panels
+
+const TABS = ["Pieces", "Colour", "Type", "Route", "Reel", "Export"];
+function renderTabs() {
+  const tabs = $("#tabs");
+  tabs.replaceChildren(...TABS.map((name) => {
+    const b = el("button", { textContent: name, className: S.tab === name ? "on" : "", role: "tab" });
+    b.dataset.testid = `tab-${name.toLowerCase()}`;
+    b.onclick = () => { S.tab = name; renderTabs(); renderPanel(); };
+    return b;
+  }));
+}
+function row(label, min, max, step, get, set, fmt = (v) => v.toFixed(2), testid = "") {
+  const input = el("input", { type: "range", min, max, step, value: get(), ariaLabel: label });
+  const out = el("output", { textContent: fmt(Number(get())) });
+  if (testid) input.dataset.testid = testid;
+  input.oninput = () => { set(Number(input.value)); out.textContent = fmt(Number(input.value)); interacting = true; touched(); };
+  input.onchange = () => { interacting = false; commit(); };
+  return el("div", { className: "row" }, el("label", { textContent: label }), input, out);
+}
+const slider = (label, min, max, step, owner, key, fmt, testid) => row(label, min, max, step, () => owner[key], (v) => { owner[key] = v; }, fmt, testid);
+function button(text, onclick, testid = "", className = "") {
+  const b = el("button", { textContent: text, onclick, className });
+  if (testid) b.dataset.testid = testid;
+  return b;
+}
+function check(label, get, set, testid = "") {
+  const input = el("input", { type: "checkbox", checked: get() });
+  if (testid) input.dataset.testid = testid;
+  input.onchange = () => { set(input.checked); touched(); commit(); };
+  return el("label", {}, input, ` ${label}`);
+}
+function renderPanel() {
+  const panel = $("#panel");
+  const scroll = panel.scrollTop;
+  panel.replaceChildren();
+  S.cropRedraw = null;
+  if (!S.recipe) return;
+  ({ Pieces: panelPieces, Colour: panelColour, Type: panelType, Route: panelRoute, Reel: panelReel, Export: panelExport })[S.tab](panel);
+  panel.scrollTop = scroll;
+}
+function remapOrder(mapping) {
+  const reel = S.recipe.reel;
+  reel.order = reel.order.map((i) => mapping[i]).filter((i) => i !== undefined && i !== null);
+  S.recipe.pieces.forEach((_, i) => { if (!reel.order.includes(i)) reel.order.push(i); });
+}
+function movePiece(i, by) {
+  const pieces = S.recipe.pieces, j = i + by;
+  if (j < 0 || j >= pieces.length) return;
+  [pieces[i], pieces[j]] = [pieces[j], pieces[i]];
+  const mapping = pieces.map((_, n) => n);
+  mapping[i] = j; mapping[j] = i;
+  remapOrder(mapping);
+  if (S.sel === i) S.sel = j; else if (S.sel === j) S.sel = i;
+  changed();
+}
+function removePiece(i) {
+  S.recipe.pieces.splice(i, 1);
+  const mapping = {};
+  for (let n = 0; n <= S.recipe.pieces.length; n++) if (n !== i) mapping[n] = n > i ? n - 1 : n;
+  remapOrder(mapping);
+  S.sel = -1;
+  changed();
+}
+function listPhoto(key) {  // a photo in a piece counts among the version's photos, for matching colours
+  if (key !== S.recipe.peek_photo && !S.recipe.photos.includes(key)) S.recipe.photos.push(key);
+}
+function usePhoto(i, key) {
+  S.recipe.pieces[i].photo = key;
+  listPhoto(key);
+  return reframe(i, "fill");
+}
+async function addPiece(shape, photo = null) {
+  const base = S.sel >= 0 && S.kind === "piece" ? S.recipe.pieces[S.sel] : S.recipe.pieces[S.recipe.pieces.length - 1];
+  const piece = clone(base);
+  Object.assign(piece, { name: `piece ${S.recipe.pieces.length + 1}`, shape: shape || clone(base.shape), body: false, shadow: 0, opacity: 1, visible: true, blend: "normal" });
+  if (!shape) moveShape(piece.shape, 40, 40);
+  if (photo) { piece.photo = photo; listPhoto(photo); }
+  piece.map = { ...piece.map };
+  S.recipe.pieces.push(piece);
+  S.recipe.reel.order.push(S.recipe.pieces.length - 1);
+  S.kind = "piece";
+  S.sel = S.recipe.pieces.length - 1;
+  if (shape) { await reframe(S.sel, "fill"); return; }  // the copied crop may miss a shape somewhere else in the frame
+  changed();
+}
+async function serverEdit(path, body) {
+  const sent = JSON.stringify(S.recipe);
+  try {
+    const { recipe } = await apiJson(path, { recipe: S.recipe, ...body });
+    if (JSON.stringify(S.recipe) !== sent) return;
+    S.recipe = recipe;
+    changed();
+  } catch (error) { setStatus(error.message, true); }
+}
+const reframe = (index, mode) => serverEdit("/api/frame", { index, mode });
+
+// --- photos from your disk: copied into the run, then used like any other
+let photoTarget = null;
+function choosePhotos(target) {
+  photoTarget = target;
+  $("#photoFile").click();
+}
+async function addPhotos(files, target) {
+  let last = null;
+  for (const file of files) {
+    setStatus(`Adding ${file.name}…`);
+    try {
+      const res = await fetch(`/api/photo?name=${encodeURIComponent(file.name)}`, {
+        method: "POST", headers: { "X-Token": TOKEN, "Content-Type": "application/octet-stream" }, body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      if (!S.info.photos.some((p) => p.key === data.photo.key)) S.info.photos.push(data.photo);
+      last = data.photo;
+    } catch (error) { setStatus(`${file.name}: ${error.message}`, true); }
+  }
+  if (!last) return;
+  setStatus(`Added ${last.name}`);
+  if (target !== null && S.recipe.pieces[target]) await usePhoto(target, last.key);
+  else await addPiece({ type: "poly", points: [[300, 700], [780, 700], [780, 1340], [300, 1340]] }, last.key);
+}
+
+// --- the whole photo, with what the piece shows of it: drag the window to move the crop, its corner to zoom
+function cropView(i) {
+  const p = S.recipe.pieces[i], m = p.map, aspect = aspectOf(p.photo);
+  const height = Math.min(240, 300 / aspect);
+  const wrap = el("div", { className: "crop" }, el("img", { src: photoUrl(p.photo, 480), alt: "", draggable: false }));
+  wrap.style.width = `${height * aspect}px`;
+  wrap.style.height = `${height}px`;
+  wrap.dataset.testid = "crop-view";
+  const box = svg("svg", { viewBox: `0 0 ${aspect} 1`, preserveAspectRatio: "none" });
+  const shade = svg("path", { class: "shade" }), win = svg("polygon", { class: "window" }), corner = svg("circle", { class: "corner", r: 0.03 });
+  win.dataset.testid = "crop-window";
+  corner.dataset.testid = "crop-zoom";
+  box.append(shade, win, corner);
+  wrap.append(box);
+  const corners = () => {
+    const b = pieceBox(i) || { x0: 0, y0: 0, x1: S.info.frame.w, y1: S.info.frame.h };
+    return [[b.x0, b.y0], [b.x1, b.y0], [b.x1, b.y1], [b.x0, b.y1]].map(([x, y]) => {
+      const [u, v] = mapPoint(m, x, y);
+      return [m.flip ? aspect - u : u, v];  // a flipped photo is shown flipped
+    });
+  };
+  const draw = () => {
+    const c = corners();
+    win.setAttribute("points", c.map((q) => q.join(" ")).join(" "));
+    shade.setAttribute("d", `M0 0H${aspect}V1H0Z M${c.map((q) => q.join(" ")).join("L")}Z`);
+    corner.setAttribute("cx", c[2][0]);
+    corner.setAttribute("cy", c[2][1]);
+  };
+  draw();
+  S.cropRedraw = draw;
+  let grab = null;
+  const at = (e) => {
+    const pt = box.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const q = pt.matrixTransform(box.getScreenCTM().inverse());
+    return [q.x, q.y];
+  };
+  const down = (mode) => (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    grab = { mode, at: at(e) };
+    box.setPointerCapture(e.pointerId);
+    interacting = true;
+  };
+  win.addEventListener("pointerdown", down("move"));
+  corner.addEventListener("pointerdown", down("zoom"));
+  box.addEventListener("pointermove", (e) => {
+    if (!grab) return;
+    const now = at(e);
+    if (grab.mode === "move") {
+      const du = now[0] - grab.at[0];
+      m.cx += m.flip ? -du : du;
+      m.cy += now[1] - grab.at[1];
+    } else {
+      const c = corners(), mid = [(c[0][0] + c[2][0]) / 2, (c[0][1] + c[2][1]) / 2];
+      const before = Math.hypot(grab.at[0] - mid[0], grab.at[1] - mid[1]), after = Math.hypot(now[0] - mid[0], now[1] - mid[1]);
+      if (before > 1e-3 && after > 1e-3) zoomAbout(m, ...middleOf(i), before / after);  // a bigger window shows more
+    }
+    grab.at = now;
+    keepFilling(i);
+    touched();
+  });
+  const up = (e) => {
+    if (!grab) return;
+    grab = null;
+    interacting = false;
+    try { box.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+    commit();
+    renderPanel();
+  };
+  box.addEventListener("pointerup", up);
+  box.addEventListener("pointercancel", up);
+  return wrap;
+}
+
+// --- filters for one photo: starting points for the sliders below them
+const PLAIN = { exposure: 1, contrast: 1, saturation: 1, warmth: 0, fade: 0, tint: 0 };
+const FILTERS = {
+  Original: {}, Vivid: { contrast: 1.12, saturation: 1.35 }, Warm: { warmth: 0.35, saturation: 1.05 },
+  Cool: { warmth: -0.3, saturation: 0.95 }, Fade: { fade: 0.12, contrast: 0.9, saturation: 0.85 },
+  Mono: { saturation: 0, contrast: 1.15 }, Noir: { saturation: 0, contrast: 1.4, exposure: 0.9 },
+  Rose: { tint: 0.25, warmth: 0.1, fade: 0.05 },
+};
+const filtered = (name) => ({ ...PLAIN, ...FILTERS[name] });
+const isFilter = (adjust, name) => Object.entries(filtered(name)).every(([k, v]) => Math.abs((adjust[k] ?? PLAIN[k]) - v) < 1e-6);
+const pieceName = (p) => (p.body ? "legs" : p.name);
+function panelPieces(panel) {
+  const pieces = S.recipe.pieces;
+  panel.append(el("h2", { textContent: "Layers (top first)" }));
+  const list = el("div", { className: "layers" });
+  list.dataset.testid = "layers";
+  for (let i = pieces.length - 1; i >= 0; i--) {
+    const p = pieces[i];
+    const eye = button(p.visible === false ? "◌" : "●", (e) => { e.stopPropagation(); p.visible = p.visible === false; changed(); }, `eye-${i}`);
+    eye.title = "Show or hide";
+    const up = button("↑", (e) => { e.stopPropagation(); movePiece(i, 1); }, `up-${i}`);
+    const down = button("↓", (e) => { e.stopPropagation(); movePiece(i, -1); }, `down-${i}`);
+    up.disabled = i === pieces.length - 1;
+    down.disabled = i === 0;
+    const line = el("div", { className: `layer${S.kind === "piece" && S.sel === i ? " sel" : ""}` },
+      el("img", { src: photoUrl(p.photo, 80), alt: "" }), el("span", { textContent: pieceName(p) }), eye, up, down);
+    line.dataset.testid = `layer-${i}`;
+    line.onclick = () => { select("piece", i); renderPanel(); drawOverlay(); };
+    list.append(line);
+  }
+  panel.append(list);
+  panel.append(el("div", { className: "line" },
+    button("Duplicate", () => addPiece(null), "duplicate"),
+    button("+ Rectangle", () => addPiece({ type: "poly", points: [[300, 700], [700, 700], [700, 1200], [300, 1200]] }), "add-rect"),
+    button("+ Circle", () => addPiece({ type: "disc", cx: 540, cy: 900, r: 260 }), "add-disc"),
+    button("Add photos…", () => choosePhotos(S.kind === "piece" && S.sel >= 0 ? S.sel : null), "add-photos")));
+  if (S.kind !== "piece" || S.sel < 0 || !pieces[S.sel]) {
+    panel.append(el("p", { className: "hint", textContent: "Click a picture. Drag moves the photo inside it, the wheel zooms, Shift+wheel turns. With the Shape tool, drag shapes and seams. Add photos, or drop them on a picture to put them in it; dropped anywhere else, a photo becomes a new piece." }));
+    legSettings(panel);
+    return;
+  }
+  const i = S.sel, p = pieces[i], m = p.map;
+  panel.append(el("h2", { textContent: p.body ? "Legs" : p.name }));
+  panel.append(el("h2", { textContent: "Photo" }));
+  const tiles = el("div", { className: "tiles" });
+  S.info.photos.forEach((photo, n) => {
+    const tile = el("button", { className: `tile${photo.key === p.photo ? " on" : ""}`, title: photo.name }, el("img", { src: photoUrl(photo.key, 120), alt: photo.name }));
+    tile.dataset.testid = `photo-${n}`;
+    tile.onclick = () => usePhoto(i, photo.key);
+    tiles.append(tile);
+  });
+  panel.append(tiles);
+  panel.append(cropView(i));
+  const swap = el("select", { ariaLabel: "Swap with" });
+  swap.dataset.testid = "swap";
+  swap.append(el("option", { value: "", textContent: "Swap photos with…" }));
+  pieces.forEach((o, n) => { if (n !== i) swap.append(el("option", { value: n, textContent: pieceName(o) })); });
+  swap.onchange = () => {
+    if (swap.value === "") return;
+    const o = pieces[Number(swap.value)];
+    [p.photo, o.photo] = [o.photo, p.photo];
+    (async () => {
+      await reframe(i, "fill");
+      await reframe(Number(swap.value), "fill");
+    })();
+  };
+  panel.append(el("div", { className: "line" }, swap));
+  panel.append(el("h2", { textContent: "Crop" }));
+  const line = el("div", { className: "line" }, button("Fit to shape", () => reframe(i, "fill"), "fit"), button("Flip", () => { m.flip = !m.flip; touched(); commit(); }, "flip"));
+  if (p.body || p.photo === S.recipe.peek_photo) {
+    line.append(button("Both legs", () => reframe(i, "both"), "frame-both"), button("Right leg", () => reframe(i, "right"), "frame-right"), button("Left leg", () => reframe(i, "left"), "frame-left"));
+  }
+  panel.append(line);
+  panel.append(row("Zoom", 0.4, 4, 0.01, () => baseK(p) / m.k, (v) => {
+    zoomAbout(m, ...middleOf(i), v / (baseK(p) / m.k));
+  }, (v) => v.toFixed(2), "zoom"));
+  panel.append(row("Turn", -45, 45, 0.1, () => m.rot, (v) => {
+    turnAbout(m, ...middleOf(i), v);
+  }, (v) => `${v.toFixed(1)}°`, "turn"));
+  panel.append(el("h2", { textContent: "This picture" }));
+  const a = p.adjust;
+  const filters = el("div", { className: "chips" });
+  for (const name of Object.keys(FILTERS)) {
+    filters.append(button(name, () => { p.adjust = filtered(name); changed(); }, `filter-${name.toLowerCase()}`, isFilter(a, name) ? "on" : ""));
+  }
+  panel.append(filters);
+  panel.append(slider("Exposure", 0.3, 1.8, 0.01, a, "exposure", undefined, "exposure"));
+  panel.append(slider("Contrast", 0.5, 1.6, 0.01, a, "contrast", undefined, "contrast"));
+  panel.append(slider("Saturation", 0, 2, 0.01, a, "saturation", undefined, "saturation"));
+  panel.append(slider("Warmth", -1, 1, 0.01, a, "warmth", undefined, "warmth"));
+  panel.append(row("Tint", -1, 1, 0.01, () => a.tint ?? 0, (v) => { a.tint = v; }, undefined, "tint"));
+  panel.append(row("Fade", 0, 0.4, 0.01, () => a.fade ?? 0, (v) => { a.fade = v; }, undefined, "fade"));
+  panel.append(slider("Opacity", 0, 1, 0.01, p, "opacity", undefined, "opacity"));
+  panel.append(slider("Shadow", 0, 1, 0.01, p, "shadow", undefined, "shadow"));
+  const blend = el("select", { ariaLabel: "Blend" }, el("option", { value: "normal", textContent: "Normal" }), el("option", { value: "screen", textContent: "Double exposure" }));
+  blend.value = p.blend;
+  blend.dataset.testid = "blend";
+  blend.onchange = () => { p.blend = blend.value; touched(); commit(); };
+  panel.append(el("div", { className: "line" }, el("label", { textContent: "Blend" }), blend,
+    button("Reset picture", () => { p.adjust = { ...PLAIN }; p.opacity = 1; p.shadow = 0; changed(); }, "reset-adjust"),
+    button("Use on every piece", () => { S.recipe.pieces.forEach((o) => { o.adjust = { ...p.adjust }; }); changed(); }, "adjust-all"),
+    button("Delete", () => removePiece(i), "delete")));
+  if (p.body) legSettings(panel);
+}
+function baseK(p) {
+  return Math.min(aspectOf(p.photo) / S.info.frame.w, 1 / S.info.frame.h);
+}
+function legSettings(panel) {
+  if (!S.recipe.peek_photo) return;
+  panel.append(el("h2", { textContent: "Leg photo" }));
+  panel.append(slider("Match others", 0, 1, 0.01, S.recipe, "match", undefined, "match"));
+  panel.append(slider("Muscle", 0, 1.2, 0.01, S.recipe, "muscle", undefined, "muscle"));
+  panel.append(el("p", { className: "hint", textContent: "Muscle deepens shading in light only; shapes stay as they are." }));
+}
+function panelColour(panel) {
+  const g = S.recipe.grade;
+  panel.append(el("h2", { textContent: "Look" }));
+  const chips = el("div", { className: "chips" });
+  S.info.looks.forEach((name) => {
+    chips.append(button(name, () => serverEdit("/api/look", { look: name }), `look-${name}`, S.recipe.look === name ? "on" : ""));
+  });
+  panel.append(chips);
+  panel.append(el("div", { className: "line" }, check("Slight photo edit", () => S.recipe.enhance, (v) => { S.recipe.enhance = v; }, "enhance")));
+  panel.append(el("h2", { textContent: "Whole picture" }));
+  panel.append(slider("Saturation", 0, 1.6, 0.01, g, "sat", undefined, "grade-sat"));
+  panel.append(slider("Exposure", 0.4, 1.5, 0.01, g, "exposure", undefined, "grade-exposure"));
+  panel.append(slider("Contrast", 0.6, 1.6, 0.01, g, "contrast", undefined, "grade-contrast"));
+  panel.append(slider("Lifted blacks", 0, 0.15, 0.001, g, "lift", (v) => v.toFixed(3), "grade-lift"));
+  panel.append(slider("Glow", 0, 0.5, 0.01, g, "halation", undefined, "grade-glow"));
+  panel.append(slider("Vignette", 0, 0.9, 0.01, g, "vignette", undefined, "grade-vignette"));
+  panel.append(slider("Grain", 0, 0.1, 0.001, g, "grain", (v) => v.toFixed(3), "grade-grain"));
+  panel.append(el("h2", { textContent: "Tints" }));
+  ["R", "G", "B"].forEach((name, i) => panel.append(slider(`Shadows ${name}`, -0.08, 0.08, 0.001, g.shadow, i, (v) => v.toFixed(3))));
+  ["R", "G", "B"].forEach((name, i) => panel.append(slider(`Lights ${name}`, -0.08, 0.08, 0.001, g.high, i, (v) => v.toFixed(3))));
+}
+const hex = (rgb) => "#" + rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
+const fromHex = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+function colourInput(label, get, set, testid) {
+  const input = el("input", { type: "color", value: hex(get()), ariaLabel: label });
+  if (testid) input.dataset.testid = testid;
+  input.oninput = () => { set(fromHex(input.value)); touched(); };
+  input.onchange = () => commit();
+  return el("label", {}, `${label} `, input);
+}
+const place = (what) => serverEdit("/api/place", { what });
+function panelType(panel) {
+  S.recipe.text = S.recipe.text || [];
+  const blocks = S.recipe.text;
+  panel.append(el("h2", { textContent: "From this activity" }));
+  const chips = el("div", { className: "chips" });
+  for (const [name, value] of Object.entries(S.info.stats)) {
+    const b = button(value, () => addLine(value), `stat-${name}`);
+    b.title = name;
+    chips.append(b);
+  }
+  if (!chips.children.length) chips.append(el("span", { className: "hint", textContent: "This run has no activity data." }));
+  panel.append(chips);
+  panel.append(el("div", { className: "line" }, button("+ Block", () => addBlock(["Type here"]), "add-block"), button("Find a calm place", () => place("text"), "place-text")));
+  blocks.forEach((block, i) => {
+    const on = S.kind === "text" && S.sel === i;
+    const head = button(`${on ? "▾" : "▸"} ${block.lines[0] || "(empty)"}`, () => { select("text", on ? -1 : i); renderPanel(); drawOverlay(); }, `block-${i}`, "link");
+    panel.append(el("div", { className: "line" }, head));
+    if (!on) return;
+    const area = el("textarea", { value: block.lines.join("\n"), ariaLabel: "Lines" });
+    area.dataset.testid = "text-lines";
+    area.oninput = () => { block.lines = area.value.split("\n").slice(0, 12).map((l) => l.slice(0, 120)); touched(); };
+    area.onchange = () => commit();
+    panel.append(area);
+    const font = el("select", { ariaLabel: "Font" });
+    font.dataset.testid = "font";
+    S.info.fonts.forEach((f) => font.append(el("option", { value: f.path, textContent: f.name })));
+    font.value = block.font;
+    font.onchange = () => { block.font = font.value; touched(); commit(); };
+    panel.append(el("div", { className: "line" }, font));
+    panel.append(slider("Size", 12, 300, 1, block, "size", (v) => `${v}`, "text-size"));
+    panel.append(row("Spacing", 1, 2, 0.01, () => block.spacing ?? 1.3, (v) => { block.spacing = v; }, undefined, "text-spacing"));
+    panel.append(slider("Opacity", 0.1, 1, 0.01, block, "opacity", undefined, "text-opacity"));
+    panel.append(slider("Dark edge", 0, 1, 0.01, block, "edge", undefined, "text-edge"));
+    panel.append(slider("Dark pool", 0, 1, 0.01, block, "pool", undefined, "text-pool"));
+    panel.append(el("div", { className: "line" },
+      colourInput("Colour", () => block.colour, (v) => { block.colour = v; }, "text-colour"),
+      check("Along the side", () => block.rotate === 90, (v) => { block.rotate = v ? 90 : 0; }, "text-rotate"),
+      check("Show", () => block.visible !== false, (v) => { block.visible = v; }, "text-show"),
+      button("Delete", () => { blocks.splice(i, 1); S.sel = -1; changed(); }, "text-delete")));
+  });
+}
+function addBlock(lines) {
+  const model = (S.recipe.text || [])[0];
+  const block = { lines, font: model ? model.font : S.info.fonts[0].path, size: 56, x: 60, y: 300, rotate: 0, colour: model ? [...model.colour] : [246, 242, 232], opacity: 1, edge: 0.7, pool: 0.5, spacing: 1.3 };
+  S.recipe.text.push(block);
+  S.kind = "text";
+  S.sel = S.recipe.text.length - 1;
+  changed();
+}
+function addLine(line) {
+  if (S.kind === "text" && S.recipe.text[S.sel]) {
+    S.recipe.text[S.sel].lines.push(line);
+    changed();
+  } else addBlock([line]);
+}
+function panelRoute(panel) {
+  const r = S.recipe.route;
+  panel.append(el("h2", { textContent: "Route" }));
+  if (!r) {
+    panel.append(el("p", { className: "hint", textContent: "This version has no route. Draw a new version from a run with a route, or use one that shows it." }));
+    return;
+  }
+  panel.append(el("p", { className: "hint", textContent: "A route shows where you run, even with its ends trimmed. Think before you post it." }));
+  panel.append(el("div", { className: "line" },
+    check("Show", () => r.visible !== false, (v) => { r.visible = v; }, "route-show"),
+    button("Find a calm place", () => place("route"), "place-route")));
+  panel.append(row("Size", 80, 900, 1, () => Math.max(r.w, r.h), (v) => { const s = v / Math.max(r.w, r.h); r.w *= s; r.h *= s; }, (v) => `${Math.round(v)}`, "route-size"));
+  panel.append(slider("Line", 1, 24, 1, r, "width", (v) => `${v}`, "route-width"));
+  panel.append(slider("Opacity", 0.1, 1, 0.01, r, "opacity", undefined, "route-opacity"));
+  panel.append(slider("Dark edge", 0, 1, 0.01, r, "edge", undefined, "route-edge"));
+  panel.append(slider("Dark pool", 0, 1, 0.01, r, "pool", undefined, "route-pool"));
+  panel.append(el("div", { className: "line" }, colourInput("Colour", () => r.colour, (v) => { r.colour = v; }, "route-colour")));
+}
+function panelReel(panel) {
+  const reel = S.recipe.reel;
+  panel.append(el("h2", { textContent: "Timing" }));
+  panel.append(slider("Length", 2, 15, 0.5, reel, "seconds", (v) => `${v.toFixed(1)} s`, "reel-seconds"));
+  panel.append(slider("Reveal", 0.5, 10, 0.1, reel, "reveal", (v) => `${v.toFixed(1)} s`, "reel-reveal"));
+  panel.append(slider("Push in", 0, 0.2, 0.005, reel, "push", (v) => `${(v * 100).toFixed(1)}%`, "reel-push"));
+  panel.append(el("h2", { textContent: "Preview" }));
+  const scrub = el("input", { type: "range", min: 0, max: 1.1, step: 0.01, value: 1.1, ariaLabel: "Moment of the reveal" });
+  scrub.dataset.testid = "reel-scrub";
+  scrub.style.width = "100%";
+  scrub.oninput = async () => { stopPlay(); await showFrame(Number(scrub.value)); };
+  panel.append(scrub);
+  const play = button(S.playing ? "Stop" : "Play reveal", () => (S.playing ? stopPlay() : playReel(scrub)), "reel-play");
+  panel.append(el("div", { className: "line" }, play, button("Back to picture", () => { stopPlay(); requestPreview(); }, "reel-back")));
+  panel.append(el("h2", { textContent: "Order they appear" }));
+  const list = el("div", { className: "layers" });
+  list.dataset.testid = "reel-order";
+  reel.order.forEach((index, at) => {
+    const p = S.recipe.pieces[index];
+    if (!p) return;
+    const up = button("↑", () => { [reel.order[at - 1], reel.order[at]] = [reel.order[at], reel.order[at - 1]]; changed(); }, `order-up-${at}`);
+    const down = button("↓", () => { [reel.order[at + 1], reel.order[at]] = [reel.order[at], reel.order[at + 1]]; changed(); }, `order-down-${at}`);
+    up.disabled = at === 0;
+    down.disabled = at === reel.order.length - 1;
+    list.append(el("div", { className: "layer" }, el("img", { src: photoUrl(p.photo, 80), alt: "" }), el("span", { textContent: pieceName(p) }), up, down));
+  });
+  panel.append(list);
+}
+async function frameBlob(progress) {
+  const res = await api("/api/reel-frame", { recipe: S.recipe, progress });
+  return URL.createObjectURL(await res.blob());
+}
+let wantedFrame = null;  // while one frame is painted, only the latest wish counts
+async function showFrame(progress) {
+  const running = wantedFrame !== null;
+  wantedFrame = progress;
+  if (running) return;
+  try {
+    while (wantedFrame !== null) {
+      const now = wantedFrame;
+      const url = await frameBlob(now);
+      if (wantedFrame === now) wantedFrame = null;
+      show(url);
+    }
+  } catch (error) {
+    wantedFrame = null;
+    setStatus(error.message, true);
+  }
+}
+function stopPlay() {
+  S.playing = false;
+  const b = document.querySelector('[data-testid="reel-play"]');
+  if (b) b.textContent = "Play reveal";
+}
+async function playReel(scrub) {
+  S.playing = true;
+  const b = document.querySelector('[data-testid="reel-play"]');
+  if (b) b.textContent = "Stop";
+  if (!S.reelFrames) {
+    setStatus("Preparing reveal…");
+    S.reelFrames = [];
+    for (let i = 0; i <= 24 && S.playing; i++) S.reelFrames.push(await frameBlob(i / 22));
+    setStatus("Saved");
+  }
+  const frameMs = (S.recipe.reel.reveal * 1000) / 22;
+  for (let i = 0; i < S.reelFrames.length && S.playing; i++) {
+    show(S.reelFrames[i], true);
+    if (scrub) scrub.value = i / 22;
+    await new Promise((resolve) => setTimeout(resolve, frameMs));
+  }
+  stopPlay();
+}
+const outUrl = (name) => `/out?t=${encodeURIComponent(TOKEN)}&name=${encodeURIComponent(name)}`;
+function panelExport(panel) {
+  panel.append(el("h2", { textContent: "Export" }));
+  panel.append(el("p", { className: "hint", textContent: "Full size, painted by the same code as the preview. No location data leaves with it." }));
+  const meter = el("div", { className: "meter" }, el("div"));
+  panel.append(el("div", { className: "line" },
+    button("Still (JPEG)", () => runExport("still", meter), "export-still", "primary"),
+    button("Reel (MP4)", () => runExport("reel", meter), "export-reel", "primary")));
+  panel.append(meter);
+  panel.append(el("h2", { textContent: "Exported" }));
+  const list = el("div", { className: "exports" });
+  list.dataset.testid = "exports";
+  (S.info.exports || []).forEach((name) => {
+    list.append(el("a", { href: outUrl(name), target: "_blank", rel: "noopener", textContent: name, style: "color: var(--accent2)" }));
+  });
+  if (!list.children.length) list.append(el("span", { className: "hint", textContent: "Nothing yet." }));
+  panel.append(list);
+  panel.append(el("p", { className: "hint", textContent: `Saved in ${S.info.folder}/exported` }));
+  if (S.lastReel) panel.append(el("video", { src: outUrl(S.lastReel), controls: true, muted: true, loop: true }));
+  panel.append(el("h2", { textContent: "Keys" }));
+  panel.append(el("p", { className: "hint", innerHTML: "<kbd>1</kbd> Picture <kbd>2</kbd> Shape <kbd>B</kbd> before <kbd>⌘Z</kbd> undo <kbd>⇧⌘Z</kbd> redo <kbd>Tab</kbd> next piece <kbd>[</kbd> <kbd>]</kbd> layer down, up <kbd>←↑→↓</kbd> nudge (⇧ 10) <kbd>H</kbd> hide <kbd>Del</kbd> delete. Hold <kbd>Alt</kbd> to drag without snapping." }));
+}
+async function runExport(kind, meter) {
+  try {
+    await save();
+    setStatus(`Exporting ${kind}…`);
+    const { job } = await apiJson("/api/export", { recipe: S.recipe, kind });
+    for (;;) {
+      const state = await apiJson(`/api/job?id=${job}`);
+      meter.firstChild.style.width = `${Math.round(state.progress * 100)}%`;
+      if (state.state === "failed") throw new Error(state.error);
+      if (state.state === "done") {
+        S.info = await apiJson("/api/state");
+        if (kind === "reel") S.lastReel = state.file;
+        setStatus(`Exported ${state.file}`);
+        renderPanel();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  } catch (error) { setStatus(error.message, true); }
+}
+
+// --- versions
+
+async function loadVersion(id) {
+  await save();
+  stopPlay();
+  const { recipe, original } = await apiJson(`/api/recipe?id=${encodeURIComponent(id)}`);
+  S.original = original;
+  if (S.beforeUrl) URL.revokeObjectURL(S.beforeUrl);
+  S.beforeUrl = null;
+  openRecipe(recipe);
+  $("#newLayout").value = recipe.layout;
+  $("#newLook").value = recipe.look;
+}
+function openRecipe(recipe) {
+  clearTimeout(saveTimer);
+  S.recipe = recipe;
+  S.last = JSON.stringify(recipe);
+  S.undo = [];
+  S.redo = [];
+  S.kind = "piece";
+  S.sel = -1;
+  S.boxes = [];
+  S.dirty = false;
+  dropReelFrames();
+  renderVersions();
+  updateButtons();
+  renderPanel();
+  requestPreview();
+}
+function renderVersions() {
+  const box = $("#versions");
+  box.replaceChildren(...S.info.versions.map((v) => {
+    const thumb = el("img", { alt: `${v.id} ${v.layout}` });
+    if (S.thumbs.has(v.id)) thumb.src = S.thumbs.get(v.id);
+    const node = el("button", { className: `version${v.id === currentId() ? " current" : ""}`, title: `${v.id} ${v.layout} ${v.look}` }, thumb,
+      el("span", { textContent: `${v.id} ${v.layout}` }), v.edited ? el("i", { title: "Edited" }) : null);
+    node.dataset.testid = `version-${v.id}`;
+    node.onclick = async () => {
+      if (S.recipe && currentId() !== v.id) refreshThumb(currentId());
+      await loadVersion(v.id);
+    };
+    return node;
+  }));
+  fillThumbs();
+}
+let filling = false;
+async function fillThumbs() {
+  if (filling) return;
+  filling = true;
+  for (const v of S.info.versions) {
+    if (S.thumbs.has(v.id)) continue;
+    try { await refreshThumb(v.id); } catch (e) { /* a thumbnail is not worth an error */ }
+  }
+  filling = false;
+}
+async function refreshThumb(id) {
+  const { recipe } = id === currentId() ? { recipe: S.recipe } : await apiJson(`/api/recipe?id=${encodeURIComponent(id)}`);
+  const res = await api("/api/preview", { recipe, scale: 0.2 });
+  const url = URL.createObjectURL(await res.blob());
+  const old = S.thumbs.get(id);
+  S.thumbs.set(id, url);
+  const node = document.querySelector(`[data-testid="version-${id}"] img`);
+  if (node) node.src = url;
+  if (old) URL.revokeObjectURL(old);
+}
+async function drawNew() {
+  const source = currentId();
+  setStatus("Drawing…");
+  try {
+    await save();
+    const { recipe } = await apiJson("/api/draw", { source, layout: $("#newLayout").value, look: $("#newLook").value, seed: S.nextSeed });
+    S.info = await apiJson("/api/state");
+    await loadVersion(recipe.id);
+  } catch (error) { setStatus(error.message, true); }
+}
+async function revertVersion() {
+  try {
+    const { recipe } = await apiJson("/api/revert", { id: currentId() });
+    const row = S.info.versions.find((v) => v.id === recipe.id);
+    if (row) row.edited = false;
+    openRecipe(recipe);
+    refreshThumb(recipe.id);
+  } catch (error) { setStatus(error.message, true); }
+}
+async function showBefore(on) {
+  if (!S.original) return;
+  if (!on) { requestPreview(); return; }
+  if (!S.beforeUrl) {
+    const res = await api("/api/preview", { recipe: S.original, scale: 0.8 });
+    S.beforeUrl = URL.createObjectURL(await res.blob());
+  }
+  show(S.beforeUrl, true);
+}
+
+// --- start
+
+function setTool(tool) {
+  S.tool = tool;
+  document.querySelectorAll("[data-tool]").forEach((b) => b.classList.toggle("on", b.dataset.tool === tool));
+  drawOverlay();
+}
+function keydown(event) {
+  const tag = event.target.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT" || (tag === "INPUT" && event.target.type !== "range" && event.target.type !== "checkbox")) return;
+  const mod = event.metaKey || event.ctrlKey;
+  if (mod && event.key.toLowerCase() === "z") { event.preventDefault(); return event.shiftKey ? redo() : undo(); }
+  if (mod) return;
+  const piece = S.kind === "piece" && S.sel >= 0 ? S.recipe.pieces[S.sel] : null;
+  const step = event.shiftKey ? 10 : 1;
+  const arrows = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  if (event.key in arrows && event.target.type !== "range") {
+    event.preventDefault();
+    const [dx, dy] = arrows[event.key];
+    if (piece) {
+      if (S.tool === "shape") { moveShape(piece.shape, dx, dy); if ($("#follow").checked) slideMap(piece.map, dx, dy); }
+      else { slideMap(piece.map, dx, dy); keepFilling(S.sel); }
+    } else if (S.kind === "text" && S.recipe.text[S.sel]) { S.recipe.text[S.sel].x += dx; S.recipe.text[S.sel].y += dy; }
+    else if (S.kind === "route" && S.recipe.route) { S.recipe.route.x += dx; S.recipe.route.y += dy; }
+    touched();
+    clearTimeout(S.keyEnd);
+    S.keyEnd = setTimeout(commit, 400);
+    return;
+  }
+  if (event.key === "1") setTool("picture");
+  else if (event.key === "2") setTool("shape");
+  else if (event.key.toLowerCase() === "b" && !event.repeat) showBefore(true);
+  else if (event.key === "Tab") {
+    event.preventDefault();
+    const count = S.recipe.pieces.length;
+    select("piece", ((S.kind === "piece" ? S.sel : -1) + (event.shiftKey ? count - 1 : 1)) % count);
+    renderPanel(); drawOverlay();
+  } else if (event.key === "[" && piece) movePiece(S.sel, -1);
+  else if (event.key === "]" && piece) movePiece(S.sel, 1);
+  else if (event.key.toLowerCase() === "h" && piece) { piece.visible = piece.visible === false; changed(); }
+  else if ((event.key === "Delete" || event.key === "Backspace") && piece) { event.preventDefault(); removePiece(S.sel); }
+}
+async function start() {
+  try {
+    S.info = await apiJson("/api/state");
+    const layouts = $("#newLayout");
+    S.info.layouts.forEach((name) => layouts.append(el("option", { value: name, textContent: name })));
+    const looks = $("#newLook");
+    S.info.looks.forEach((name) => looks.append(el("option", { value: name, textContent: name })));
+    const over = $("#over");
+    over.addEventListener("pointerdown", startDrag);
+    over.addEventListener("pointermove", moveDrag);
+    over.addEventListener("pointerup", endDrag);
+    over.addEventListener("pointercancel", endDrag);
+    over.addEventListener("wheel", wheel, { passive: false });
+    const stage = $("#stage");
+    stage.addEventListener("dragover", (event) => {
+      if (![...event.dataTransfer.types].includes("Files")) return;
+      event.preventDefault();
+      stage.classList.add("dropping");
+    });
+    stage.addEventListener("dragleave", () => stage.classList.remove("dropping"));
+    stage.addEventListener("drop", (event) => {
+      event.preventDefault();
+      stage.classList.remove("dropping");
+      const role = event.target.dataset && event.target.dataset.role;
+      const target = role === "piece" ? Number(event.target.dataset.index) : null;
+      if (target !== null) select("piece", target);
+      addPhotos([...event.dataTransfer.files], target);
+    });
+    $("#photoFile").onchange = async () => {
+      const files = [...$("#photoFile").files];
+      $("#photoFile").value = "";
+      await addPhotos(files, photoTarget);
+    };
+    document.addEventListener("keydown", keydown);
+    document.addEventListener("keyup", (event) => { if (event.key.toLowerCase() === "b") showBefore(false); });
+    document.querySelectorAll("[data-tool]").forEach((b) => { b.onclick = () => setTool(b.dataset.tool); });
+    $("#undo").onclick = undo;
+    $("#redo").onclick = redo;
+    $("#revert").onclick = revertVersion;
+    $("#draw").onclick = drawNew;
+    const before = $("#before");
+    before.onpointerdown = () => showBefore(true);
+    before.onpointerup = before.onpointerleave = () => showBefore(false);
+    for (const id of ["#safeZones", "#outlines"]) $(id).onchange = drawOverlay;
+    $("#zoom").onchange = () => {
+      const zoom = Number($("#zoom").value), stage = $("#stage"), wrap = $("#stageWrap");
+      stage.style.height = zoom === 1 ? "" : `${(wrap.clientHeight - 28) * zoom}px`;
+    };
+    window.addEventListener("pagehide", () => {
+      if (S.dirty) fetch("/api/save", { method: "POST", keepalive: true, headers: { "X-Token": TOKEN }, body: JSON.stringify({ recipe: S.recipe }) });
+    });
+    renderTabs();
+    setTool("picture");
+    await loadVersion(S.info.versions[0].id);
+  } catch (error) { setStatus(error.message, true); }
+}
+window.__editor = { S, idle: () => settled.then(() => undefined), saved: () => S.saving, commit, touched };
+start();
+</script>
+</body>
+</html>

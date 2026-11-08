@@ -5,3 +5,4 @@ __pycache__/
 dist/
 sessions/
 .env
+tests/vrt/_failed/
