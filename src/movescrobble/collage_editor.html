@@ -232,9 +232,9 @@ async function pump(scale) {
       const recipe = S.recipe;
       const res = await api("/api/preview", { recipe, scale });
       const info = JSON.parse(res.headers.get("X-Info"));
-      const url = URL.createObjectURL(await res.blob());
-      const view = $("#view");
-      await new Promise((resolve) => { view.onload = resolve; view.onerror = resolve; show(url); });
+      // Shown without waiting for it to load: a load event that never comes (the browser busy, the tab hidden) must not
+      // keep every later preview waiting. The next picture replaces this one either way.
+      show(URL.createObjectURL(await res.blob()));
       if (recipe === S.recipe) {
         S.boxes = info.boxes;
         $("#share").textContent = info.share ? `legs ${(info.share * 100).toFixed(0)}% of frame` : "";
