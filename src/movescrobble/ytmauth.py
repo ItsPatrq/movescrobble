@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
-import os
 from collections.abc import Iterable
 from pathlib import Path
+
+from .config import write_private
 
 ORIGIN = "https://music.youtube.com"
 LOGIN_COOKIE = "__Secure-3PAPISID"  # only present when signed in; the request signature is computed from it
@@ -87,8 +88,4 @@ def account_name(headers: dict, client=None) -> str:
 
 def save(path: Path, headers: dict) -> None:
     """Readable by you only, from the first byte."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(headers, f)
-    path.chmod(0o600)  # an older file keeps its mode through O_CREAT
+    write_private(path, json.dumps(headers))

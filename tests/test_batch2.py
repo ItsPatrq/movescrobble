@@ -134,3 +134,20 @@ def test_pocketcasts_login_saves_token_private(monkeypatch, tmp_path):
     tok = pocketcasts.login("e", "p", lambda path, body, t: {"token": "abc"})
     assert tok == "abc" and pocketcasts.saved_token() == "abc"
     assert (tmp_path / "pocketcasts.json").stat().st_mode & 0o777 == 0o600
+
+
+def test_tokens_are_never_readable_by_others_even_for_a_moment(monkeypatch, tmp_path):
+    import os
+    import stat
+    from pathlib import Path
+
+    from movescrobble import config
+
+    monkeypatch.setenv("MOVESCROBBLE_HOME", str(tmp_path))
+    old = os.umask(0)  # the loosest a shell can be: a file made then chmod-ed is world-readable until the chmod
+    monkeypatch.setattr(Path, "chmod", lambda self, mode: None)  # what is on disk before any chmod
+    try:
+        config.write_private_json("lastfm.json", {"session_key": "s"})
+    finally:
+        os.umask(old)
+    assert stat.S_IMODE((tmp_path / "lastfm.json").stat().st_mode) == 0o600
