@@ -171,6 +171,7 @@ const S = {
 };
 const $ = (q) => document.querySelector(q);
 const currentId = () => S.recipe && S.recipe.id;
+const isLegs = (p) => Boolean(S.recipe.peek_photo) && p.photo === S.recipe.peek_photo;  // told by the photo, as in collage.shows_legs
 const el = (tag, props = {}, ...kids) => {
   const node = Object.assign(document.createElement(tag), props);
   for (const kid of kids) if (kid != null) node.append(kid);
@@ -231,9 +232,9 @@ async function pump(scale) {
       const recipe = S.recipe;
       const res = await api("/api/preview", { recipe, scale });
       const info = JSON.parse(res.headers.get("X-Info"));
-      const url = URL.createObjectURL(await res.blob());
-      const view = $("#view");
-      await new Promise((resolve) => { view.onload = resolve; view.onerror = resolve; show(url); });
+      // Shown without waiting for it to load: a load event that never comes (the browser busy, the tab hidden) must not
+      // keep every later preview waiting. The next picture replaces this one either way.
+      show(URL.createObjectURL(await res.blob()));
       if (recipe === S.recipe) {
         S.boxes = info.boxes;
         $("#share").textContent = info.share ? `legs ${(info.share * 100).toFixed(0)}% of frame` : "";
@@ -362,7 +363,7 @@ function drawOverlay() {
   S.recipe.pieces.forEach((piece, i) => {
     if (piece.visible === false) return;
     const selected = S.kind === "piece" && S.sel === i;
-    const path = svg("path", { d: shapePath(piece.shape), class: `cut${selected ? " sel" : ""}${piece.body ? " isbody" : ""}` });
+    const path = svg("path", { d: shapePath(piece.shape), class: `cut${selected ? " sel" : ""}${isLegs(piece) ? " isbody" : ""}` });
     path.dataset.role = "piece";
     path.dataset.index = i;
     path.dataset.testid = `piece-${i}`;
@@ -897,7 +898,8 @@ const FILTERS = {
 };
 const filtered = (name) => ({ ...PLAIN, ...FILTERS[name] });
 const isFilter = (adjust, name) => Object.entries(filtered(name)).every(([k, v]) => Math.abs((adjust[k] ?? PLAIN[k]) - v) < 1e-6);
-const pieceName = (p) => (p.body ? "legs" : p.name);
+// a run drawn before pieces were named by number calls its leg cell "legs", whatever it holds now
+const pieceName = (p) => (isLegs(p) ? "legs" : p.name === "legs" ? `piece ${S.recipe.pieces.indexOf(p) + 1}` : p.name);
 function panelPieces(panel) {
   const pieces = S.recipe.pieces;
   panel.append(el("h2", { textContent: "Layers (top first)" }));
@@ -929,7 +931,7 @@ function panelPieces(panel) {
     return;
   }
   const i = S.sel, p = pieces[i], m = p.map;
-  panel.append(el("h2", { textContent: p.body ? "Legs" : p.name }));
+  panel.append(el("h2", { textContent: isLegs(p) ? "Legs" : pieceName(p) }));
   panel.append(el("h2", { textContent: "Photo" }));
   const tiles = el("div", { className: "tiles" });
   S.info.photos.forEach((photo, n) => {
@@ -956,7 +958,7 @@ function panelPieces(panel) {
   panel.append(el("div", { className: "line" }, swap));
   panel.append(el("h2", { textContent: "Crop" }));
   const line = el("div", { className: "line" }, button("Fit to shape", () => reframe(i, "fill"), "fit"), button("Flip", () => { m.flip = !m.flip; touched(); commit(); }, "flip"));
-  if (p.body || p.photo === S.recipe.peek_photo) {
+  if (isLegs(p)) {
     line.append(button("Both legs", () => reframe(i, "both"), "frame-both"), button("Right leg", () => reframe(i, "right"), "frame-right"), button("Left leg", () => reframe(i, "left"), "frame-left"));
   }
   panel.append(line);
@@ -989,7 +991,7 @@ function panelPieces(panel) {
     button("Reset picture", () => { p.adjust = { ...PLAIN }; p.opacity = 1; p.shadow = 0; changed(); }, "reset-adjust"),
     button("Use on every piece", () => { S.recipe.pieces.forEach((o) => { o.adjust = { ...p.adjust }; }); changed(); }, "adjust-all"),
     button("Delete", () => removePiece(i), "delete")));
-  if (p.body) legSettings(panel);
+  if (isLegs(p)) legSettings(panel);
 }
 function baseK(p) {
   return Math.min(aspectOf(p.photo) / S.info.frame.w, 1 / S.info.frame.h);

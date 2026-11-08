@@ -869,3 +869,10 @@ def test_a_piece_can_fade_and_tint():
     pink = collage._adjusted(grey, {"tint": 0.5})[0, 0]
     assert pink[0] > 0.5 > pink[1] and pink[2] > 0.5
     assert np.array_equal(collage._adjusted(grey, {}), grey)  # recipes from before stay as they were
+
+
+def test_the_leg_photo_is_told_by_its_photo_wherever_it_goes():
+    recipe = {"peek_photo": "legs.jpg"}
+    assert collage.shows_legs({"photo": "legs.jpg", "body": False}, recipe)
+    assert not collage.shows_legs({"photo": "park.jpg", "body": True}, recipe)  # a stale flag from before
+    assert not collage.shows_legs({"photo": "legs.jpg"}, {"peek_photo": None})

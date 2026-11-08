@@ -123,8 +123,16 @@ def record(db, session_row, settled: Settled) -> None:
     )
 
 
+def ensure_pending(db, session_row) -> None:
+    """Right before sending: another run (the shell, `garmin-sync`, `scrobble-pending`) may have settled or discarded
+    this session since it was read, and Last.fm would take the same swim twice."""
+    if not history.still_planned(db, session_row["id"]):
+        raise ValueError(f"session {session_row['id']} was settled or discarded meanwhile; nothing was sent")
+
+
 def submit_session(db, session_row, settled: Settled, cfg: Config, **deps) -> int:
     """Send to configured services, then mark the session scrobbled exactly once. Returns Last.fm's accepted count."""
+    ensure_pending(db, session_row)
     n = send_scrobbles(db, settled.scrobbles, cfg, **deps)
     record(db, session_row, settled)
     return n

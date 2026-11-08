@@ -448,3 +448,21 @@ def test_collage_without_runs_says_how_to_make_one(env):
     shell, _, out = make(env, "collage", "q")
     shell.run()
     assert "No collages yet" in text(out)
+
+
+def test_scrobble_does_not_send_a_session_settled_meanwhile(env, monkeypatch):
+    cfg, db, lib, folder, _ = env
+    stage(env)
+    db.execute("UPDATE sessions SET planned_at = planned_at - 7200")
+    db.commit()
+    settle = flow.settle
+
+    def settled_elsewhere(*args, **kwargs):  # garmin-sync in another window gets there first
+        db.execute("UPDATE sessions SET status='scrobbled'")
+        db.commit()
+        return settle(*args, **kwargs)
+
+    monkeypatch.setattr(flow, "settle", settled_elsewhere)
+    shell, fake, out = make(env, "c", "", "", "y", "q")
+    shell.run()
+    assert not [c for c in fake.calls if c[0] == "submit"] and "settled or discarded meanwhile" in text(out)
